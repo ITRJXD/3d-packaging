@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>子母箱装箱｜3D 包材设计工具</title>
+<meta name="description" content="计算子箱装箱数量与母箱内外尺寸，校验三边和，逐层调整并查看 3D 摆放。">
+<meta name="author" content="Perry">
+<style>
+:root{color-scheme:light;--ink:#172c29;--muted:#506963;--border:#d9e5df;--paper:#fff;--accent:#115e4d;--mint:#e7f5ee;--cut:#263c36;--fold:#3166a5}
+*{box-sizing:border-box}
+body{margin:0;background:#eef4f0;color:var(--ink);font:14px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select{font:inherit}
+button,select,input[type=number]{border:1px solid var(--border);border-radius:8px;background:white;color:var(--ink);min-height:35px;padding:5px 10px}
+button{cursor:pointer;font-weight:650}button:hover{background:var(--mint)}button:disabled{opacity:.5;cursor:default}button.primary{background:var(--accent);color:white;border-color:var(--accent)}button.primary:hover{background:#0a483b}
+:focus-visible{outline:2px solid #13876a;outline-offset:2px}
+header,.bar,.controls,.range-line,.legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:clamp(22px,3vw,32px);letter-spacing:-.045em}h2{margin:0;font-size:16px}
+.sub,.muted{color:var(--muted);margin:2px 0 0}.unit{padding:4px 9px;border-radius:6px;background:var(--mint);color:var(--accent);font-size:12px;font-weight:700}
+label{display:grid;gap:4px;font-weight:600;min-width:0}
+.toggle{display:flex;align-items:center;gap:5px;font-weight:500}
+.packing-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border)}
+.packing-heading h2,.packing-section h3{margin:0}.packing-workspace{display:grid;grid-template-columns:minmax(275px,340px) minmax(0,1fr)}
+.packing-settings,.packing-result{min-width:0;padding:14px}.packing-settings{background:#f8faf8;border-right:1px solid var(--border)}
+.packing-section{display:grid;gap:9px;padding:10px 0 14px}.packing-settings > * + *{border-top:1px solid var(--border)}
+.packing-section h3{font-size:14px}.packing-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.packing-fields label{font-size:12px}.packing-fields input,.packing-fields select{width:100%;min-width:0}
+[hidden]{display:none!important}
+#packMessage,#packStatus{margin:0;font-size:12px}#packStatus{color:#86521c}
+.packing-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.packing-summary>div{padding:7px 9px;border-radius:7px;background:#eef5ef;font-size:12px;overflow-wrap:anywhere}
+.packing-summary strong{display:block;font-size:14px}.packing-summary .pack-over{background:#fcece7;color:#8a2a17}
+#packScene{display:block;width:100%;height:auto;max-height:52vh;min-height:200px;touch-action:none;cursor:grab;border:1px solid var(--border);border-radius:10px;background:#f6f1e6}
+#packScene:active{cursor:grabbing}.packing-preview-actions{gap:8px;font-size:12px}
+
+@media(max-width:760px){.packing-workspace{grid-template-columns:1fr}.packing-settings{border-right:0;border-bottom:1px solid var(--border)}#packLayerEditor .packing-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+#packUseBox[hidden]{display:none}
+.packing-page{width:min(1440px,100%);margin:auto;padding:12px}.packing-heading{margin-bottom:10px;background:#fff;border:1px solid var(--border);border-radius:14px}.packing-workspace{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden}.packing-heading h1{margin:0}.packing-result{min-width:0}#packScene{max-height:62vh}.page-link{display:inline-flex;align-items:center;min-height:35px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:white;color:var(--ink);font-weight:650;text-decoration:none}.page-link:hover{background:var(--mint)}
+.packing-views{margin:8px 0}.packing-views button[aria-pressed="true"]{background:var(--accent);color:white;border-color:var(--accent)}
+.packing-batch{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px}.packing-batch p{margin:0;font-size:12px}.packing-batch[hidden],#packOneLayerField[hidden]{display:none}
+#packScene[data-view]:not([data-view="perspective"]){cursor:default;touch-action:auto}
+.packing-dimensions{grid-template-columns:repeat(3,minmax(0,1fr))}
+.packing-fold{padding:10px 0}
+.packing-fold summary{cursor:pointer;font-weight:700;padding:4px 0}
+.packing-fold-body{display:grid;gap:9px;margin-top:8px}
+.packing-views{margin:0 0 10px;gap:8px}
+@media(min-width:761px){
+  .packing-workspace{overflow:visible}
+  .packing-settings{border-radius:14px 0 0 14px}
+  .packing-result{position:sticky;top:12px;align-self:start}
+  #packScene{height:clamp(320px,68vh,720px);max-height:none}
+}
+.packing-section-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.packing-section-heading select{width:auto}
+</style>
+</head>
+<body>
+<main class="packing-page">
+  <div class="packing-heading">
+    <h1>子母箱装箱</h1>
+    <a class="page-link" href="index.html">返回包材设计</a>
+  </div>
+  <div class="packing-workspace">
+    <section class="packing-settings" aria-label="装箱设置与结果">
+      <div class="packing-section">
+        <div class="packing-fields">
+          <label>计算方式<select id="packMode"><option value="target">指定几个一装</option><option value="batch">按总数量推荐</option></select></label>
+          <label><span id="packQuantityLabel">每箱装几个</span><input id="packQuantity" type="number" value="8" min="1" max="500" step="1"></label>
+        </div>
+      </div>
+      <div class="packing-section">
+        <div class="packing-section-heading">
+          <h3>子箱外尺寸</h3>
+          <select id="packUnit" aria-label="尺寸单位">
+            <option value="mm">毫米 mm</option><option value="cm" selected>厘米 cm</option><option value="m">米 m</option>
+          </select>
+        </div>
+        <div class="packing-fields packing-dimensions">
+          <label>长<input id="packLength" type="number" value="22" min="1" max="300" step="any"></label>
+          <label>宽<input id="packWidth" type="number" value="20.5" min="1" max="300" step="any"></label>
+          <label>高<input id="packHeight" type="number" value="26.5" min="1" max="300" step="any"></label>
+        </div>
+        <label>单个子箱毛重（kg）<input id="packChildWeight" type="number" min="0" step="any" placeholder="选填"></label>
+        <div class="controls"><button id="packUseBox" type="button" hidden>使用当前纸箱尺寸</button>
+          <label class="toggle"><input id="packTip" type="checkbox">允许侧放</label></div>
+      </div>
+      <details class="packing-fold">
+        <summary>母箱规格与限制</summary>
+        <div class="packing-fold-body">
+          <label class="toggle"><input id="packUseSum" type="checkbox" aria-controls="packSumField">限制母箱三边和</label>
+          <div class="packing-fields">
+            <label id="packSumField" hidden><span>三边和上限（<span data-length-unit>cm</span>）</span><input id="packSum" type="number" min="1" step="any" disabled></label>
+            <label><span>最长边上限（<span data-length-unit>cm</span>）</span><input id="packLongest" type="number" min="1" step="any" placeholder="选填"></label>
+            <label><span>箱内单侧留量（<span data-length-unit>cm</span>）</span><input id="packClearance" type="number" value="0" min="0" max="50" step="any"></label>
+            <label><span>母箱单侧板厚（<span data-length-unit>cm</span>）</span><input id="packBoard" type="number" value="0" min="0" max="10" step="any"></label>
+            <label>母箱空重（kg）<input id="packTare" type="number" min="0" step="any" placeholder="选填"></label>
+            <label id="packTailTareField" hidden>尾箱空重（kg）<input id="packTailTare" type="number" min="0" step="any" placeholder="选填"></label>
+            <label>整箱毛重上限（kg）<input id="packWeightLimit" type="number" min="0" step="any" placeholder="选填"></label>
+          </div>
+        </div>
+      </details>
+      <section class="packing-section" aria-labelledby="packingResultTitle">
+        <h3 id="packingResultTitle">装箱结果</h3>
+        <p id="packStatus" class="muted" role="status" hidden></p>
+        <div id="packBatchInfo" class="packing-batch" hidden>
+          <p id="packBatchSummary" role="status"></p>
+          <label>查看箱型<select id="packCarton"></select></label>
+        </div>
+        <label id="packPlanLabel" hidden>推荐摆法<select id="packPlan" aria-label="推荐摆法"></select></label>
+        <div class="packing-summary" id="packSummary"></div>
+        <p id="packMessage" class="muted" hidden></p>
+        <div class="controls packing-preview-actions">
+          <span class="muted" id="packViewHint">拖动旋转 · 滚轮缩放</span><button id="packResetView" type="button">重置视角</button>
+          <label class="toggle" id="packOneLayerField"><input id="packOneLayer" type="checkbox">仅查看当前层</label>
+        </div>
+      </section>
+      <details id="packLayerEditor" class="packing-fold" hidden>
+        <summary>逐层调整</summary>
+        <div class="packing-fold-body">
+          <div class="packing-fields">
+            <label>当前层<select id="packLayer"></select></label>
+            <label>子箱朝向<select id="packOrientation"></select></label>
+            <label>沿长摆几列<input id="packColumns" type="number" min="1" max="500" step="1"></label>
+            <label>沿宽摆几排<input id="packRows" type="number" min="1" max="500" step="1"></label>
+            <label>本层放几箱<input id="packLayerCount" type="number" min="1" max="250000" step="1"></label>
+          </div>
+          <div class="controls"><button id="packAddLayer" type="button">复制为上一层</button><button id="packRemoveLayer" type="button">移除当前层</button></div>
+        </div>
+      </details>
+    </section>
+    <section class="packing-result" aria-label="装箱预览">
+      <div class="controls packing-views" role="group" aria-label="预览视图">
+        <button type="button" data-pack-view="perspective" aria-pressed="true">透视 3D</button>
+        <button type="button" data-pack-view="top" aria-pressed="false">俯视</button>
+        <button type="button" data-pack-view="front" aria-pressed="false">正视</button>
+        <button type="button" data-pack-view="side" aria-pressed="false">侧视</button>
+      </div>
+      <svg id="packScene" viewBox="0 0 760 420" role="img" aria-label="母箱和分层摆放的子箱"></svg>
+    </section>
+  </div>
+</main>
+<script>
+const byId=id=>document.getElementById(id);
+const svgNS="http://www.w3.org/2000/svg";
+const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
+
+function svgTag(name, attrs = {}, parent) {
+  const node = document.createElementNS(svgNS,name);
+  for (const [key,value] of Object.entries(attrs)) node.setAttribute(key,value);
+  if (parent) parent.append(node);
+  return node;
+}
+const pointList = points => points.map(point => point.join(',')).join(' ');
+
+const maxChildDimensionCm=300;
+const packingAxes=[[0,1,2],[1,0,2],[0,2,1],[2,0,1],[1,2,0],[2,1,0]];
+const packingOrientations=['原方向','平转 90°','宽边朝上','宽边朝上并平转','长边朝上','长边朝上并平转'];
+const packingView={x:-25,y:33,zoom:1};
+let packingConfig=null, packingPlans=[], packingLayers=[], packingLayerIndex=0;
+let packingCartons=[], packingCartonIndex=0, packingProjection='perspective';
+const packNumber=n=>Number(n.toFixed(4));
+const centimetersPerUnit={mm:.1,cm:1,m:100};
+const packingInputIds=['packLength','packWidth','packHeight'];
+const packingLengthIds=[...packingInputIds,'packSum','packLongest','packClearance','packBoard'];
+let packingUnit='cm';
+const displayPackingLength=cm=>Number((cm/centimetersPerUnit[packingUnit]).toPrecision(12));
+const packLength=cm=>displayPackingLength(cm)+' '+packingUnit;
+const packSize=size=>size.map(displayPackingLength).join(' × ')+' '+packingUnit;
+
+function readPackingConfig() {
+  const number=id=>{
+    const input=byId(id);
+    return input.validity.badInput?NaN:input.value.trim()===''?null:input.valueAsNumber;
+  };
+  const length=id=>{
+    const value=number(id);
+    return value===null?null:Number((value*centimetersPerUnit[packingUnit]).toPrecision(12));
+  };
+  const child=packingInputIds.map(length);
+  const sumEnabled=byId('packUseSum').checked;
+  const sum=sumEnabled?length('packSum'):null, longest=length('packLongest');
+  const childWeight=number('packChildWeight'), tare=number('packTare'), weightLimit=number('packWeightLimit');
+  const clearance=length('packClearance'), board=length('packBoard');
+  const mode=byId('packMode').value, quantity=number('packQuantity');
+  const inRange=(value,min,max)=>Number.isFinite(value)&&value>=min&&value<=max;
+  if (child.some(value=>!inRange(value,1,maxChildDimensionCm))) throw new Error('子箱长、宽、高请输入 '+displayPackingLength(1)+'–'+packLength(maxChildDimensionCm)+'。');
+  if (sumEnabled&&(!Number.isFinite(sum)||sum<1)) throw new Error('请输入有效的三边和上限（至少 '+packLength(1)+'）。');
+  if (longest!==null&&(!Number.isFinite(longest)||longest<1)) throw new Error('最长边上限至少为 '+packLength(1)+'。');
+  if (!inRange(clearance,0,50)||!inRange(board,0,10)) throw new Error('请检查单侧留量和板厚。');
+  const tailTare=mode==='batch'?number('packTailTare'):null;
+  if (!Number.isSafeInteger(quantity)||quantity<1||(mode==='target'&&quantity>500)) {
+    throw new Error(mode==='target'?'每箱数量须是 1–500 的整数。':'整批子箱总数须是正整数。');
+  }
+  if ([childWeight,weightLimit].some(value=>value!==null&&(!Number.isFinite(value)||value<=0)) ||
+      [tare,tailTare].some(value=>value!==null&&(!Number.isFinite(value)||value<0))) {
+    throw new Error('请检查子箱毛重、空箱重量和毛重上限。');
+  }
+  return {child,sum,longest,clearance,board,mode,quantity,childWeight,tare,tailTare,weightLimit,tip:byId('packTip').checked};
+}
+
+function packingSizeStats(core,config) {
+  const inner=core.map(value=>value+2*config.clearance);
+  const outer=inner.map(value=>value+2*config.board);
+  const sum=outer.reduce((a,b)=>a+b,0);
+  const longest=Math.max(...outer);
+  const sumExcess=config.sum===null?0:Math.max(0,sum-config.sum);
+  const edgeExcess=config.longest===null?0:Math.max(0,longest-config.longest);
+  return {inner,outer,sum,longest,sumExcess,edgeExcess,valid:Math.max(sumExcess,edgeExcess)<1e-7,
+    volume:outer[0]*outer[1]*outer[2]};
+}
+
+function packingStats(core,config,quantity) {
+  const size=packingSizeStats(core,config);
+  const childTotal=config.childWeight===null?null:config.childWeight*quantity;
+  const gross=childTotal===null||config.tare===null?null:childTotal+config.tare;
+  const knownWeight=(childTotal??0)+(config.tare??0);
+  const weightExcess=config.weightLimit===null?0:Math.max(0,knownWeight-config.weightLimit);
+  return {...size,quantity,childTotal,gross,weightExcess,
+    weightPending:config.weightLimit!==null&&gross===null&&weightExcess<1e-7,
+    valid:size.valid&&weightExcess<1e-7};
+}
+
+function packingRank(a,b) {
+  return Number(b.valid)-Number(a.valid) ||
+    (a.valid?0:a.sumExcess+a.edgeExcess-b.sumExcess-b.edgeExcess) ||
+    b.quantity-a.quantity || packNumber(a.volume-b.volume) ||
+    packNumber(a.longest-b.longest) || packNumber(a.sum-b.sum) ||
+    a.layers-b.layers;
+}
+
+function findPackingPlans(config) {
+  const options=[];
+  const offset=2*(config.board+config.clearance);
+  const budget=(config.sum??Infinity)-3*offset;
+  const sideLimit=(config.longest??Infinity)-offset;
+  const weightCapacity=config.weightLimit===null||config.childWeight===null?Infinity:
+    Math.floor((config.weightLimit-(config.tare??0))/config.childWeight+1e-9);
+  const capacity=Math.min(config.quantity,500,weightCapacity);
+  const target=config.mode==='target';
+  // 自动计算枚举同朝向的规则网格，逐层编辑可以再混用不同朝向。
+  const keys=new Set();
+  for (const orientation of config.tip?[0,2,4]:[0]) {
+    const [l,w,h]=packingAxes[orientation].map(i=>config.child[i]);
+    const maxX=target?config.quantity:Math.min(capacity,Math.floor(Math.min(sideLimit,budget-w-h)/l+1e-9));
+    for (let x=1;x<=maxX;x++) {
+      const maxY=target?Math.ceil(config.quantity/x):Math.min(Math.ceil(capacity/x),Math.floor(Math.min(sideLimit,budget-x*l-h)/w+1e-9));
+      for (let y=1;y<=maxY;y++) {
+        const z=target?Math.ceil(config.quantity/(x*y)):
+          Math.min(Math.ceil(capacity/(x*y)),Math.floor(Math.min(sideLimit,budget-x*l-y*w)/h+1e-9));
+        if (z<1) continue;
+        const quantity=target?config.quantity:Math.min(capacity,x*y*z);
+        const core=[Math.min(x,quantity)*l,Math.min(y,Math.ceil(quantity/x))*w,z*h];
+        const stats=packingStats(core,config,quantity);
+        if (!target && !stats.valid) continue;
+        const plan={...stats,x,y,layers:z,orientation,quantity};
+        if (options.length>=5 && packingRank(plan,options[4])>=0) continue;
+        const key=[...core.slice(0,2).map(packNumber).sort((a,b)=>a-b),packNumber(core[2]),quantity].join('x');
+        if (keys.has(key)) continue;
+        keys.add(key);
+        options.push({...plan,key});
+        options.sort(packingRank);
+        if (options.length>5) keys.delete(options.pop().key);
+      }
+    }
+  }
+  return options;
+}
+
+function packingLayerLayout(layer,config) {
+  const [l,w,h]=packingAxes[layer.orientation].map(i=>config.child[i]);
+  return {l,w,h,length:Math.min(layer.columns,layer.count)*l,
+    width:Math.ceil(layer.count/layer.columns)*w};
+}
+
+function packingMeasurements(config,layers) {
+  const layouts=layers.map(layer=>packingLayerLayout(layer,config));
+  const core=[Math.max(...layouts.map(layer=>layer.length)),Math.max(...layouts.map(layer=>layer.width)),
+    layouts.reduce((sum,layer)=>sum+layer.h,0)];
+  return {...packingStats(core,config,layers.reduce((sum,layer)=>sum+layer.count,0)),core,layouts};
+}
+
+function packSelect(id,entries) {
+  byId(id).replaceChildren(...entries.map(([value,label])=>{
+    const option=document.createElement('option');
+    option.value=value;
+    option.textContent=label;
+    return option;
+  }));
+}
+
+function applyPackingPlan(plan) {
+  packingLayers=Array.from({length:plan.layers},(_,i)=>({
+    columns:plan.x,rows:plan.y,orientation:plan.orientation,
+    count:Math.min(plan.x*plan.y,plan.quantity-i*plan.x*plan.y)
+  }));
+  packingLayerIndex=0;
+  syncPackingLayers();
+}
+
+function syncPackingLayers() {
+  byId('packLayerEditor').hidden=!packingLayers.length;
+  if (!packingLayers.length) return;
+  packSelect('packLayer',packingLayers.map((layer,i)=>[String(i),'第 '+(i+1)+' 层 · '+layer.count+' 箱']));
+  byId('packLayer').value=String(packingLayerIndex);
+  const layer=packingLayers[packingLayerIndex];
+  packSelect('packOrientation',packingOrientations.slice(0,packingConfig.tip?6:2).map((label,i)=>[String(i),label]));
+  byId('packOrientation').value=String(layer.orientation);
+  byId('packColumns').value=layer.columns;
+  byId('packRows').value=layer.rows;
+  byId('packLayerCount').value=layer.count;
+  byId('packLayerCount').max=layer.columns*layer.rows;
+  byId('packRemoveLayer').disabled=packingLayers.length<=1;
+  byId('packAddLayer').disabled=packingLayers.length>=500;
+  renderPackingResult();
+}
+
+const packFaceCorners=[[0,1,3,2],[4,6,7,5],[0,4,5,1],[2,3,7,6],[0,2,6,4],[1,5,7,3]];
+const packEdges=[[0,1],[1,3],[3,2],[2,0],[4,5],[5,7],[7,6],[6,4],[0,4],[1,5],[2,6],[3,7]];
+function packCorners(x,y,z,l,w,h) {
+  return Array.from({length:8},(_,i)=>[x+(i&1?l:0),y+(i&2?w:0),z+(i&4?h:0)]);
+}
+function drawPackingScene(stats) {
+  const svg=byId('packScene');
+  svg.replaceChildren();
+  const names={perspective:'透视 3D',top:'俯视',front:'正视',side:'侧视'};
+  svg.setAttribute('aria-label',names[packingProjection]+' · 母箱及子箱摆放');
+  if (packingProjection!=='perspective') {
+    drawPackingPlane(svg,stats);
+    return;
+  }
+  const [l,w,h]=stats.outer;
+  const cameraDistance=2.3*Math.hypot(l,w,h);
+  const project=point=>{
+    const factor=cameraDistance/(cameraDistance-point.z);
+    return {x:point.x*factor,y:point.y*factor,z:point.z};
+  };
+  const rotation=new DOMMatrix().rotate(packingView.x,0,0).rotate(0,packingView.y,0);
+  const rotate=([x,y,z])=>project(rotation.transformPoint(new DOMPoint(x-l/2,-(z-h/2),y-w/2)));
+  const outer=packCorners(0,0,0,l,w,h).map(rotate);
+  const min=(points,key)=>Math.min(...points.map(point=>point[key]));
+  const max=(points,key)=>Math.max(...points.map(point=>point[key]));
+  const fit=Math.min(540/(max(outer,'x')-min(outer,'x')),278/(max(outer,'y')-min(outer,'y')))*packingView.zoom;
+  const centerX=(max(outer,'x')+min(outer,'x'))/2;
+  const centerY=(max(outer,'y')+min(outer,'y'))/2;
+  const screen=point=>[380+(point.x-centerX)*fit,210+(point.y-centerY)*fit];
+  const selectedOnly=byId('packOneLayer').checked;
+  const crowded=stats.quantity>220;
+  const facesToDraw=[];
+  let z=packingConfig.clearance+packingConfig.board;
+  const pad=z;
+  for (const [index,layer] of packingLayers.entries()) {
+    const {l,w,h}=stats.layouts[index];
+    if ((!selectedOnly&&!crowded)||index===packingLayerIndex) {
+      for (let i=0;i<Math.min(layer.count,220);i++) {
+        const points=packCorners(pad+(i%layer.columns)*l,pad+Math.floor(i/layer.columns)*w,z,l,w,h).map(rotate);
+        for (const [side,indices] of packFaceCorners.entries()) {
+          const face=indices.map(i=>points[i]);
+          const [a,b,c]=face;
+          if ((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)>=0) continue;
+          facesToDraw.push({face,depth:face.reduce((sum,p)=>sum+p.z,0)/4,
+            color:(index===packingLayerIndex?['#626f57','#b4d39d','#8eb37c']:['#8a7852','#e7d6a9','#c8ac74'])[side%3]});
+        }
+      }
+    }
+    z+=h;
+  }
+  for (const {face,color} of facesToDraw.sort((a,b)=>a.depth-b.depth)) {
+    svgTag('polygon',{points:pointList(face.map(screen)),fill:color,stroke:'#524b3e','stroke-width':.65},svg);
+  }
+  for (const [i,j] of packEdges) {
+    const [x1,y1]=screen(outer[i]), [x2,y2]=screen(outer[j]);
+    svgTag('line',{x1,y1,x2,y2,stroke:'#285849','stroke-width':1.45,'stroke-dasharray':'5 4'},svg);
+  }
+  drawPerspectiveDimensions(svg,outer.map(screen),stats.outer);
+  drawPackingAxes(svg,['X','Y','Z'].map((axis,index)=>{
+    const basis=[[1,0,0],[0,0,1],[0,-1,0]][index];
+    const point=rotation.transformPoint(new DOMPoint(...basis,0));
+    return [axis,point.x,point.y];
+  }));
+}
+
+function packingGuideText(svg,x,y,label,attrs={}) {
+  const node=svgTag('text',{x,y,fill:'#115e4d','font-size':14,'font-weight':650,
+    'text-anchor':'middle','dominant-baseline':'central',stroke:'#f6f1e6','stroke-width':5,
+    'paint-order':'stroke',...attrs},svg);
+  node.textContent=label;
+}
+
+function drawPackingDimension(svg,a,b,label,dx,dy,vertical=false) {
+  const [x1,y1]=a, [x2,y2]=b;
+  svgTag('path',{d:`M ${x1} ${y1} l ${dx} ${dy} L ${x2+dx} ${y2+dy} L ${x2} ${y2}`,
+    fill:'none',stroke:'#115e4d','stroke-width':1.2},svg);
+  const x=(x1+x2)/2+dx, y=(y1+y2)/2+dy;
+  packingGuideText(svg,x,y,label,vertical?{transform:`rotate(-90 ${x} ${y})`}:{});
+}
+
+function drawPerspectiveDimensions(svg,points,sizes) {
+  const center=[0,1].map(axis=>points.reduce((sum,point)=>sum+point[axis],0)/points.length);
+  const labels=['长','宽','高'];
+  const placed=[];
+  [1,2,4].forEach((bit,index)=>{
+    const candidates=[];
+    for (let i=0;i<8;i++) {
+      if (i&bit) continue;
+      const a=points[i], b=points[i|bit];
+      const vx=b[0]-a[0], vy=b[1]-a[1], length=Math.hypot(vx,vy);
+      if (length<.01) continue;
+      const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2;
+      const outward=Math.sign((mx-center[0])*-vy+(my-center[1])*vx)||1;
+      const dx=-vy/length*outward*21, dy=vx/length*outward*21;
+      const x=mx+dx,y=my+dy;
+      const inside=x>=115&&x<=680&&y>=20&&y<=400;
+      const overlaps=placed.some(point=>Math.abs(point[0]-x)<110&&Math.abs(point[1]-y)<21);
+      candidates.push({a,b,dx,dy,x,y,score:(inside?300:0)-(overlaps?280:0)+
+        Math.hypot(mx-center[0],my-center[1])+length*.2});
+    }
+    const choice=candidates.sort((a,b)=>b.score-a.score)[0];
+    if (choice&&choice.x>=62&&choice.x<=698&&choice.y>=10&&choice.y<=410) {
+      drawPackingDimension(svg,choice.a,choice.b,labels[index]+' '+packLength(sizes[index]),choice.dx,choice.dy);
+      placed.push([choice.x,choice.y]);
+    } else {
+      packingGuideText(svg,680,30+index*22,labels[index]+' '+packLength(sizes[index]),{'text-anchor':'end'});
+    }
+  });
+}
+
+function drawPackingAxes(svg,vectors) {
+  const origin=[55,365], colors={X:'#a92829',Y:'#176740',Z:'#2359a0'};
+  svgTag('circle',{cx:origin[0],cy:origin[1],r:43,fill:'#fcfaf4',opacity:.94,stroke:'#ded9cd'},svg);
+  for (const [axis,x,y] of vectors) {
+    const tipX=origin[0]+27*x,tipY=origin[1]+27*y,theta=Math.atan2(y,x);
+    const color=colors[axis];
+    if (Math.hypot(x,y)<.16) {
+      packingGuideText(svg,origin[0]+8,origin[1]-8,axis,{fill:color,'font-size':12});
+      continue;
+    }
+    svgTag('line',{x1:origin[0],y1:origin[1],x2:tipX,y2:tipY,stroke:color,'stroke-width':2},svg);
+    const wing=angle=>[tipX-5*Math.cos(theta+angle),tipY-5*Math.sin(theta+angle)];
+    svgTag('polygon',{points:pointList([[tipX,tipY],wing(.55),wing(-.55)]),fill:color},svg);
+    packingGuideText(svg,tipX+10*Math.cos(theta),tipY+10*Math.sin(theta),axis,{fill:color,'font-size':12});
+  }
+  svgTag('circle',{cx:origin[0],cy:origin[1],r:2.5,fill:'#364b42'},svg);
+}
+
+function drawPackingPlane(svg,stats) {
+  const top=packingProjection==='top', side=packingProjection==='side';
+  const [length,width,height]=stats.outer;
+  const horizontal=side?width:length;
+  const vertical=top?width:height;
+  const scale=Math.min(510/horizontal,280/vertical);
+  const left=380-horizontal*scale/2, baseline=210+vertical*scale/2;
+  const pad=packingConfig.clearance+packingConfig.board;
+  const rect=(x,y,w,h,style)=>svgTag('rect',{
+    x:left+x*scale,y:baseline-(y+h)*scale,width:w*scale,height:h*scale,...style
+  },svg);
+  const text=(x,y,label,anchor='middle')=>{
+    svgTag('text',{x,y,'text-anchor':anchor,fill:'#244b40','font-size':14},svg).textContent=label;
+  };
+  const line=(x1,y1,x2,y2)=>svgTag('line',{x1,y1,x2,y2,stroke:'#547569'},svg);
+  rect(0,0,horizontal,vertical,{fill:'#fbfaf4',stroke:'#285849','stroke-width':1.5,'stroke-dasharray':'5 4'});
+  const selected={fill:'#b4d39d',stroke:'#486349','stroke-width':.8};
+  const other={fill:'#e7d6a9',stroke:'#786954','stroke-width':.8};
+  if (top) {
+    const layer=packingLayers[packingLayerIndex];
+    const layout=stats.layouts[packingLayerIndex];
+    const {l,w}=layout, columns=Math.min(layer.columns,layer.count);
+    const rows=Math.ceil(layer.count/layer.columns);
+    const completeRows=Math.floor(layer.count/layer.columns), remainder=layer.count%layer.columns;
+    if (completeRows) rect(pad,vertical-pad-completeRows*w,columns*l,completeRows*w,selected);
+    if (remainder) rect(pad,vertical-pad-rows*w,remainder*l,w,selected);
+    // 用占位轮廓表现空位，密集排布保留比例，避免绘制大量不可辨认的格线。
+    const yTop=baseline-(vertical-pad)*scale;
+    const xStart=left+pad*scale;
+    if (l*scale>=3) for (let i=1;i<columns;i++) {
+      line(xStart+i*l*scale,yTop,xStart+i*l*scale,yTop+(completeRows+(i<remainder?1:0))*w*scale);
+    }
+    if (w*scale>=3) for (let i=1;i<rows;i++) {
+      line(xStart,yTop+i*w*scale,xStart+(i===completeRows&&remainder?remainder:columns)*l*scale,yTop+i*w*scale);
+    }
+    text(380,28,'第 '+(packingLayerIndex+1)+' 层 · '+layer.count+' 箱 · '+columns+' 列 × '+rows+' 排 · '+packingOrientations[layer.orientation]);
+  } else {
+    let z=pad;
+    stats.layouts.forEach((layout,index)=>{
+      const isSelected=index===packingLayerIndex;
+      const occupied=side?layout.width:layout.length;
+      const cell=side?layout.w:layout.l;
+      rect(pad,z,occupied,layout.h,isSelected?selected:other);
+      const start=left+pad*scale, bottom=baseline-z*scale;
+      if (cell*scale>=3) for (let i=1;i<Math.round(occupied/cell);i++) {
+        line(start+i*cell*scale,bottom,start+i*cell*scale,bottom-layout.h*scale);
+      }
+      z+=layout.h;
+    });
+    text(380,28,'高亮第 '+(packingLayerIndex+1)+' 层 · 层高 '+packLength(stats.layouts[packingLayerIndex].h));
+  }
+  drawPackingDimension(svg,[left,baseline],[left+horizontal*scale,baseline],
+    (side?'宽 ':'长 ')+packLength(horizontal),0,24);
+  drawPackingDimension(svg,[left,baseline],[left,baseline-vertical*scale],
+    (top?'宽 ':'高 ')+packLength(vertical),-22,0,true);
+  drawPackingAxes(svg,[[side?'Y':'X',1,0],top?['Y',0,1]:['Z',0,-1]]);
+}
+
+function renderPackingResult() {
+  const summary=byId('packSummary');
+  summary.replaceChildren();
+  if (!packingLayers.length) {byId('packScene').replaceChildren();return;}
+  const stats=packingMeasurements(packingConfig,packingLayers);
+  const limited=[packingConfig.sum,packingConfig.longest,packingConfig.weightLimit].some(value=>value!==null);
+  const note=!stats.valid?'超出客户限制':stats.weightPending?'重量待确认':limited?'符合客户限制':'未设置限制';
+  const delta=stats.sumExcess>=1e-7?'超 '+packLength(stats.sumExcess):
+    packingConfig.sum===null?'':'余 '+packLength(Math.max(0,packingConfig.sum-stats.sum));
+  const boxes=[
+    ['母箱内尺寸',packSize(stats.inner),false],['母箱外尺寸',packSize(stats.outer),false],
+    ['外尺寸三边和',packLength(stats.sum)+(delta?' · '+delta:''),stats.sumExcess>=1e-7],
+    ['最长边',packLength(stats.longest)+(stats.edgeExcess>=1e-7?' · 超 '+packLength(stats.edgeExcess):''),stats.edgeExcess>=1e-7],
+    ['装箱数量',stats.quantity+' 箱 / '+packingLayers.length+' 层',false],['校验结果',note,!stats.valid]
+  ];
+  const kg=value=>packNumber(value)+' kg';
+  boxes.push(['子箱毛重合计',stats.childTotal===null?'待填子箱毛重':kg(stats.childTotal),false]);
+  boxes.push(['整箱预估毛重',
+    stats.gross===null?(stats.childTotal===null?'待填子箱毛重':'待加母箱空重'):kg(stats.gross),
+    stats.weightExcess>=1e-7]);
+  if (packingConfig.weightLimit!==null) {
+    boxes.push(['整箱毛重上限',kg(packingConfig.weightLimit)+
+      (stats.weightExcess>=1e-7?' · 至少超 '+kg(stats.weightExcess):stats.weightPending?' · 待确认':''),stats.weightExcess>=1e-7]);
+  }
+  for (const [label,value,over] of boxes) {
+    const cell=document.createElement('div');
+    const strong=document.createElement('strong');
+    cell.textContent=label;
+    strong.textContent=value;
+    cell.classList.toggle('pack-over',over);
+    cell.append(strong);
+    summary.append(cell);
+  }
+  const layer=packingLayers[packingLayerIndex];
+  const details=['图中虚线为母箱外轮廓，绿色为当前层。'];
+  if (packingCartons.length) {
+    packingCartons[packingCartonIndex].actual=stats.quantity;
+    const parts=packingCartons.map(carton=>carton.count+' 箱各装 '+carton.actual+' 个');
+    const actual=packingCartons.reduce((total,carton)=>total+carton.count*carton.actual,0);
+    const target=packingCartons[0].config.quantity;
+    byId('packBatchSummary').textContent='整批 '+target+' 个 · '+parts.join('，')+
+      (actual!==target?' · 当前合计 '+actual+' 个':'');
+    if (target>500&&packingCartons[0].plans[0].quantity===500) details.push('自动推荐每箱最多计算 500 个。');
+  }
+  if (packingConfig.mode==='target'&&stats.quantity!==packingConfig.quantity) details.push('与目标 '+packingConfig.quantity+' 箱相差 '+Math.abs(stats.quantity-packingConfig.quantity)+' 箱。');
+  if (packingProjection==='perspective'&&stats.quantity>220) details.push('箱数较多，预览只显示当前层'+(layer.count>220?'的前 220 箱':'')+'。');
+  byId('packMessage').textContent=details.join(' ');
+  byId('packMessage').hidden=false;
+  drawPackingScene(stats);
+}
+
+function clearPackingResult(message='') {
+  packingConfig=null;
+  packingPlans=[];
+  packingLayers=[];
+  packingCartons=[];
+  byId('packBatchInfo').hidden=true;
+  byId('packPlanLabel').hidden=true;
+  byId('packLayerEditor').hidden=true;
+  byId('packMessage').hidden=true;
+  setPackingStatus(message);
+  renderPackingResult();
+}
+function setPackingStatus(message) {
+  const status=byId('packStatus');
+  status.textContent=message;
+  status.hidden=!message;
+}
+
+function calculatePacking() {
+  let config;
+  try {
+    config=readPackingConfig();
+  } catch(error) {
+    setPackingStatus(error.message+(packingLayers.length?' 当前显示上一次有效结果。':''));
+    return;
+  }
+  try {
+    const plans=findPackingPlans(config);
+    if (!plans.length) {clearPackingResult('当前限制下无法放入一个子箱，请核对尺寸和上限。');return;}
+    setPackingStatus('');
+    if (config.mode==='target') {
+      packingCartons=[];
+      byId('packBatchInfo').hidden=true;
+      showPackingPlans(config,plans);
+      applyPackingPlan(plans[0]);
+      return;
+    }
+    // 如果独立尾箱的空重较大，寻找仍能装完整批货的最大主箱数量。
+    let capacity=plans[0].quantity;
+    if (config.weightLimit!==null&&config.tailTare!==null) {
+      const available=config.weightLimit-config.tailTare;
+      const tailCapacity=available<0?0:config.childWeight===null?Infinity:
+        Math.floor(available/config.childWeight+1e-9);
+      while (config.quantity%capacity>tailCapacity) capacity--;
+    }
+    const mainPlans=capacity===plans[0].quantity?plans.filter(plan=>plan.quantity===capacity):
+      findPackingPlans({...config,mode:'target',quantity:capacity}).filter(plan=>plan.valid);
+    const count=Math.floor(config.quantity/capacity);
+    const remaining=config.quantity%capacity;
+    packingCartons=[{config,plans:mainPlans,count,actual:capacity,layers:null,index:0,plan:0}];
+    if (remaining) {
+      const tail={...config,mode:'target',quantity:remaining,tare:config.tailTare};
+      packingCartons.push({config:tail,plans:findPackingPlans(tail),count:1,actual:remaining,layers:null,index:0,plan:0});
+    }
+    packSelect('packCarton',packingCartons.map((carton,i)=>[String(i),i===0?'主箱 · '+capacity+' 个一装':'尾箱 · '+carton.actual+' 个']));
+    byId('packBatchInfo').hidden=false;
+    selectPackingCarton(0);
+  } catch(error) {clearPackingResult(error.message);}
+}
+
+function showPackingPlans(config,plans,selected=0) {
+  packingConfig=config;
+  packingPlans=plans;
+  packSelect('packPlan',plans.map((plan,i)=>[String(i),plan.x+' 列 × '+plan.y+' 排 × '+plan.layers+' 层 · '+
+    packingOrientations[plan.orientation]+(plan.valid?'':'（超限）')]));
+  byId('packPlanLabel').hidden=false;
+  byId('packPlan').value=String(selected);
+}
+
+function selectPackingCarton(index) {
+  packingCartonIndex=index;
+  byId('packCarton').value=String(index);
+  const carton=packingCartons[index];
+  showPackingPlans(carton.config,carton.plans,carton.plan);
+  if (carton.layers) {
+    packingLayers=carton.layers;
+    packingLayerIndex=carton.index;
+    syncPackingLayers();
+  } else applyPackingPlan(carton.plans[carton.plan]);
+}
+
+byId('packCarton').addEventListener('change',event=>{
+  Object.assign(packingCartons[packingCartonIndex],{
+    layers:packingLayers,index:packingLayerIndex,plan:Number(byId('packPlan').value)
+  });
+  selectPackingCarton(Number(event.target.value));
+});
+
+let packingUpdateTimer;
+function schedulePackingUpdate() {
+  clearTimeout(packingUpdateTimer);
+  setPackingStatus(packingLayers.length?'正在更新，当前显示上一次有效结果。':'正在更新。');
+  packingUpdateTimer=setTimeout(calculatePacking,200);
+}
+byId('packUnit').addEventListener('change',event=>{
+  const previous=centimetersPerUnit[packingUnit];
+  packingUnit=event.target.value;
+  for (const id of packingLengthIds) {
+    const input=byId(id);
+    for (const attribute of ['min','max','value']) {
+      if (input[attribute]!=='') input[attribute]=displayPackingLength(Number(input[attribute])*previous);
+    }
+  }
+  for (const label of document.querySelectorAll('[data-length-unit]')) label.textContent=packingUnit;
+  if (!byId('packStatus').hidden) schedulePackingUpdate();
+  else renderPackingResult();
+});
+const packingParams=new URLSearchParams(location.search);
+const incomingSizes=['L','W','H'].map(key=>Number(packingParams.get(key)));
+if (incomingSizes.every(size=>Number.isFinite(size)&&size>=1&&size<=maxChildDimensionCm)) {
+  const applyIncomingSizes=()=>{
+    packingInputIds.forEach((id,i)=>{byId(id).value=displayPackingLength(incomingSizes[i]);});
+  };
+  applyIncomingSizes();
+  const useBox=byId('packUseBox');
+  useBox.hidden=false;
+  useBox.addEventListener('click',()=>{
+    applyIncomingSizes();
+    schedulePackingUpdate();
+  });
+}
+byId('packMode').addEventListener('change',()=>{
+  const batch=byId('packMode').value==='batch';
+  byId('packQuantityLabel').textContent=batch?'整批子箱总数':'每箱装几个';
+  byId('packTailTareField').hidden=!batch;
+  if (batch) byId('packQuantity').removeAttribute('max');
+  else byId('packQuantity').max=500;
+  schedulePackingUpdate();
+});
+byId('packUseSum').addEventListener('change',event=>{
+  byId('packSumField').hidden=!event.target.checked;
+  byId('packSum').disabled=!event.target.checked;
+  schedulePackingUpdate();
+});
+for (const id of ['packChildWeight','packTare','packTailTare','packWeightLimit','packLength','packWidth','packHeight','packSum','packLongest','packBoard','packClearance','packQuantity','packTip']) {
+  byId(id).addEventListener('input',schedulePackingUpdate);
+}
+byId('packPlan').addEventListener('change',event=>applyPackingPlan(packingPlans[Number(event.target.value)]));
+byId('packLayer').addEventListener('change',event=>{packingLayerIndex=Number(event.target.value);syncPackingLayers();});
+for (const [id,key] of [['packColumns','columns'],['packRows','rows'],['packLayerCount','count'],['packOrientation','orientation']]) {
+  byId(id).addEventListener('change',event=>{
+    const layer=packingLayers[packingLayerIndex];
+    const value=Number(event.target.value);
+    if (event.target.value!==''&&Number.isInteger(value)) {
+      if (key==='orientation') layer.orientation=clamp(value,0,packingConfig.tip?5:1);
+      else if (key==='count') layer.count=clamp(value,1,layer.columns*layer.rows);
+      else layer[key]=clamp(value,1,500);
+      layer.count=Math.min(layer.count,layer.columns*layer.rows);
+    }
+    syncPackingLayers();
+  });
+}
+byId('packAddLayer').addEventListener('click',()=>{
+  packingLayers.splice(packingLayerIndex+1,0,{...packingLayers[packingLayerIndex]});
+  packingLayerIndex++;
+  syncPackingLayers();
+});
+byId('packRemoveLayer').addEventListener('click',()=>{
+  if (packingLayers.length<=1) return;
+  packingLayers.splice(packingLayerIndex,1);
+  packingLayerIndex=Math.min(packingLayerIndex,packingLayers.length-1);
+  syncPackingLayers();
+});
+byId('packOneLayer').addEventListener('change',renderPackingResult);
+byId('packResetView').addEventListener('click',()=>{
+  Object.assign(packingView,{x:-25,y:33,zoom:1});
+  renderPackingResult();
+});
+const packingScene=byId('packScene');
+const viewButtons=document.querySelectorAll('[data-pack-view]');
+for (const button of viewButtons) button.addEventListener('click',()=>{
+  packingProjection=button.dataset.packView;
+  packingScene.dataset.view=packingProjection;
+  const perspective=packingProjection==='perspective';
+  byId('packResetView').hidden=!perspective;
+  byId('packOneLayerField').hidden=!perspective;
+  byId('packViewHint').textContent=perspective?'拖动旋转 · 滚轮缩放':packingProjection==='top'?'切换当前层查看摆法':'绿色标出当前层';
+  for (const choice of viewButtons) choice.setAttribute('aria-pressed',String(choice===button));
+  renderPackingResult();
+});
+let packingDrag=null;
+packingScene.addEventListener('pointerdown',event=>{
+  if (packingProjection!=='perspective'||!packingLayers.length||event.button!==0) return;
+  packingDrag={id:event.pointerId,x:event.clientX,y:event.clientY};
+  packingScene.setPointerCapture(event.pointerId);
+});
+packingScene.addEventListener('pointermove',event=>{
+  if (packingProjection!=='perspective'||packingDrag?.id!==event.pointerId||!packingLayers.length) return;
+  packingView.y=(packingView.y+(event.clientX-packingDrag.x)*.45)%360;
+  packingView.x=clamp(packingView.x-(event.clientY-packingDrag.y)*.45,-85,85);
+  Object.assign(packingDrag,{x:event.clientX,y:event.clientY});
+  drawPackingScene(packingMeasurements(packingConfig,packingLayers));
+});
+packingScene.addEventListener('lostpointercapture',()=>{packingDrag=null;});
+packingScene.addEventListener('wheel',event=>{
+  if (packingProjection!=='perspective'||!packingLayers.length) return;
+  event.preventDefault();
+  packingView.zoom=clamp(packingView.zoom*Math.exp(-event.deltaY*.0015),.45,3);
+  drawPackingScene(packingMeasurements(packingConfig,packingLayers));
+},{passive:false});
+
+calculatePacking();
+</script>
+</body>
+</html>

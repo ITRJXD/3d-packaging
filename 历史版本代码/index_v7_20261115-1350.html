@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>包装盒刀版 · 3D折叠工作台</title>
+<style>
+:root{color-scheme:light;--ink:#172c29;--muted:#506963;--border:#d9e5df;--paper:#fff;--accent:#115e4d;--mint:#e7f5ee;--cut:#263c36;--fold:#3166a5}
+*{box-sizing:border-box}
+body{margin:0;background:#eef4f0;color:var(--ink);font:14px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select{font:inherit}
+button,select,input[type=number]{border:1px solid var(--border);border-radius:8px;background:white;color:var(--ink);min-height:35px;padding:5px 10px}
+button{cursor:pointer;font-weight:650}button:hover{background:var(--mint)}button:disabled{opacity:.5;cursor:default}button.primary{background:var(--accent);color:white;border-color:var(--accent)}button.primary:hover{background:#0a483b}
+:focus-visible{outline:2px solid #13876a;outline-offset:2px}
+main{height:100vh;height:100dvh;display:flex;flex-direction:column;padding:12px;gap:10px;min-height:0}
+header,.bar,.controls,.range-line,.legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header{justify-content:space-between;padding:0 3px;flex:none}
+#templateFormat{width:auto}
+h1{margin:0;font-size:clamp(22px,3vw,32px);letter-spacing:-.045em}h2{margin:0;font-size:16px}
+.sub,.muted{color:var(--muted);margin:2px 0 0}.unit{padding:4px 9px;border-radius:6px;background:var(--mint);color:var(--accent);font-size:12px;font-weight:700}
+.grid{display:grid;grid-template-columns:minmax(0,37fr) minmax(0,42fr) minmax(260px,21fr);gap:10px;flex:1;min-height:0}
+.canvas-panel,.settings{display:flex;flex-direction:column;min-height:0}
+.canvas-panel > :not(.viewport),.settings > .bar{flex:none}
+.settings .tools{min-height:0;overflow:auto;overscroll-behavior:contain;align-content:start}
+.settings .controls{gap:7px}
+.presets{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.presets button[aria-pressed="true"]{background:#deeee5;border-color:#82ab9d;color:var(--accent)}
+.control-group{display:grid;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.view-help{padding:8px 12px;font-size:12px;color:var(--muted);margin:0}
+.panel{min-width:0;background:var(--paper);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.bar{justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border)}
+.dimensions,.tools{padding:12px 16px;display:grid;gap:10px}
+.dimensions{grid-template-columns:repeat(4,minmax(0,1fr))}
+label{display:grid;gap:4px;font-weight:600;min-width:0}
+input[type=number],select{width:100%}
+input[type=range]{width:100%;min-width:0;accent-color:var(--accent);margin:0}
+.viewport{position:relative;overflow:hidden;flex:1;min-height:0;border-block:1px solid var(--border);background-color:#fcf7ee}
+.blueprint,#stage{background-image:linear-gradient(#d4c7ae45 1px,transparent 1px),linear-gradient(90deg,#d4c7ae45 1px,transparent 1px);background-size:24px 24px}
+#drawing{position:absolute;inset:0;display:block;width:100%;height:100%}
+#stage{touch-action:none;cursor:grab}
+#stage.drag{cursor:grabbing}
+.scene{position:absolute;inset:0;perspective:1300px;pointer-events:none}
+.space{position:absolute;left:50%;top:50%;width:0;height:0;transform-style:preserve-3d;transform-origin:0 0}
+.hinge,.skin,.edge{position:absolute;left:0;top:0;transform-origin:0 0}
+.hinge{width:0;height:0;transform-style:preserve-3d}
+.skin{display:block;max-width:none;overflow:visible}
+.edge{background:#a4885f}
+#stage.view-transition #camera,#stage.view-transition #model{transition:transform 350ms cubic-bezier(.2,.7,.25,1)}
+#stage.view-transition #guides{opacity:0}
+@media(prefers-reduced-motion:reduce){#stage.view-transition #camera,#stage.view-transition #model{transition:none}#stage.view-transition #guides{opacity:1}}
+.hinge.covering-focus > .skin,.hinge.covering-focus > .edge{display:none}
+[data-face]{pointer-events:fill;cursor:pointer}
+#stage [data-face].selected{stroke:#1748b3;stroke-width:3;vector-effect:non-scaling-stroke}
+#stage [data-face].selected[data-overlay]{fill:#1748b3;fill-opacity:.15}
+#stage.drag [data-face]{cursor:grabbing}
+#guides{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;pointer-events:none}
+.toggle{display:flex;align-items:center;gap:5px;font-weight:500}
+.toggle input{accent-color:var(--accent)}
+#coordinates{padding:0 16px 12px;min-height:32px;color:var(--muted);font-size:12px}
+#partPicker{width:auto;max-width:100%}
+#demoNote{min-height:21px;margin:0}
+#drawing text,#drawing #cut-lines,#drawing #fold-lines,#drawing #dimensions,#drawing g[data-preview]{pointer-events:none}
+.legend{padding:12px 16px;color:var(--muted);font-size:12px}
+.key::before{content:"";display:inline-block;width:19px;margin-right:6px;vertical-align:middle;border-top:2px solid var(--cut)}
+.key.fold::before{border-top:2px dashed var(--fold)}.key.active::before{border-color:#1748b3}
+.key.moving::before{border-color:#d37528}
+.face-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.face-card{min-width:0;padding:6px;border:1px solid var(--border);border-radius:9px;display:grid;gap:5px}
+.face-card.active{border:2px solid #1748b3;padding:5px;background:#eef4ff}
+.face-card button{font-size:12px;min-width:0;padding-inline:4px}
+.face-preview{display:grid;place-items:center;gap:4px;min-height:55px}
+.face-preview img{width:100%;height:45px;object-fit:contain}
+.face-preview img[hidden]{display:none}
+.face-actions{display:flex;flex-wrap:wrap;gap:4px}
+.face-actions button{flex:1}
+#artEditing{margin:0;font-size:12px}
+.range-line{flex-wrap:nowrap}.range-line input{flex:1}.range-line output{min-width:43px;text-align:right;font-variant-numeric:tabular-nums}
+.adjust{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.adjust label{font-size:12px}.adjust output{font-variant-numeric:tabular-nums;color:var(--muted)}
+#hint{min-height:20px;font-size:12px}
+#hint.error,#dimHint{color:#a52e22}
+#dimHint{grid-column:1/-1;margin:0;font-size:12px}
+@media(max-width:940px){main{height:auto}.grid{grid-template-columns:1fr 1fr}.settings{grid-column:1/-1}.viewport{min-height:460px}}
+@media(max-width:620px){.grid{grid-template-columns:1fr}.viewport{min-height:420px}}
+@media(max-width:380px){.dimensions,.adjust{grid-template-columns:repeat(2,minmax(0,1fr))}.viewport{min-height:360px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div><h1>包装盒刀版工作台</h1><p class="sub">横排纸箱 · 四侧面板与上下摇盖</p></div>
+  <div class="controls">
+    <label for="templateFormat">模板格式</label>
+    <select id="templateFormat"><option value="svg">SVG</option><option value="pdf">PDF</option><option value="ai">AI（PDF 兼容）</option></select>
+    <button class="primary" id="export">导出模板</button>
+  </div>
+</header>
+<div class="grid">
+  <section class="panel canvas-panel" aria-labelledby="flatTitle">
+    <div class="bar"><h2 id="flatTitle">2D 刀版图</h2><div class="controls"><label class="toggle"><input id="showFlatArt" type="checkbox"> 显示贴图</label><span class="unit">毫米 mm</span></div></div>
+    <div class="dimensions">
+      <label>长 L<input id="length" type="number" min="10" max="1000" step="0.1" value="120"></label>
+      <label>宽 W<input id="width" type="number" min="10" max="1000" step="0.1" value="70"></label>
+      <label>高 H<input id="height" type="number" min="10" max="1000" step="0.1" value="145"></label>
+      <label>纸厚<input id="thickness" type="number" min="0" max="5" step="0.1" value="0.6"></label>
+      <p id="dimHint" role="status" hidden></p>
+    </div>
+    <div class="viewport blueprint"><svg id="drawing" role="img" aria-label="横排纸箱刀版图" preserveAspectRatio="xMidYMid meet"></svg></div>
+    <div class="legend"><span class="key">裁切线</span><span class="key fold">折线</span><span class="key active">选中面板</span><span class="key moving">活动折线</span></div>
+    <div id="coordinates" role="status">点选面板查看坐标 · 左下角为原点 · X 向右、Y 向上</div>
+  </section>
+  <section class="panel canvas-panel" aria-labelledby="viewTitle">
+    <div class="bar"><h2 id="viewTitle">3D 折叠预览</h2><div class="controls"><label class="toggle"><input id="showGuides" type="checkbox" checked> 坐标与尺寸</label><button id="resetView">重置视角</button></div></div>
+    <div class="viewport" id="stage" tabindex="0" aria-label="三维预览，方向键旋转，按加号或减号缩放">
+      <div class="scene"><div class="space" id="camera"><div class="space" id="model"></div></div></div>
+      <svg id="guides" aria-hidden="true"></svg>
+    </div>
+    <p class="view-help">拖拽旋转 · 滚轮缩放 · Shift 拖拽平移 · 点击任一视图定位</p>
+  </section>
+  <aside class="panel settings" aria-labelledby="settingsTitle">
+    <div class="bar"><h2 id="settingsTitle">折叠与贴图</h2></div>
+    <div class="tools">
+      <div class="control-group">
+        <label for="progress">折叠进度 <span class="muted" id="phase"></span></label>
+      <div class="range-line"><button id="play" aria-label="播放折叠动画">播放</button><input id="progress" type="range" min="0" max="100" value="100" aria-label="折叠进度"><output id="percent" for="progress"></output></div>
+      <div class="presets">
+        <button id="presetOpen" aria-pressed="false">展开</button>
+        <button id="presetHalf" aria-pressed="false">半折</button>
+        <button id="presetClosed" class="primary" aria-pressed="true">合上</button>
+      </div>
+      </div>
+      <div class="control-group">
+      <div class="controls">
+        <button id="demo">逐步拆盒</button><button id="prevStep" disabled>上一步</button><button id="nextStep" disabled>下一步</button>
+      </div>
+      <p class="muted" id="demoNote" role="status" hidden></p>
+      <div class="controls"><label for="partPicker">面板</label><select id="partPicker"><option value="">选择面板</option></select><button id="flipPart" disabled>翻开面板</button></div>
+      </div>
+      <div class="control-group">
+        <div class="controls"><button id="importDesign">导入整张 PNG</button><button id="removeDesign" disabled>移除成稿</button></div>
+        <input id="designFile" type="file" accept=".png,image/png" hidden>
+        <p id="designStatus" class="muted" role="status">设计完成后，隐藏刀版辅助层，按原画板完整导出 PNG。</p>
+      </div>
+      <div class="face-cards" id="faceCards" aria-label="六面贴图"></div>
+      <p class="muted" id="artEditing"></p>
+      <div class="adjust">
+        <label>缩放 <output id="scaleValue"></output><input id="scale" type="range" min="25" max="300" value="100"></label>
+        <label>横向 <output id="offsetXValue"></output><input id="offsetX" type="range" min="-100" max="100" value="0"></label>
+        <label>纵向 <output id="offsetYValue"></output><input id="offsetY" type="range" min="-100" max="100" value="0"></label>
+        <label>旋转 <output id="rotationValue"></output><input id="rotation" type="range" min="-180" max="180" value="0"></label>
+      </div>
+      <p class="muted" id="hint" role="status"></p>
+    </div>
+  </aside>
+</div>
+</main>
+<script>
+'use strict';
+const byId = id => document.getElementById(id);
+const svgNS = 'http://www.w3.org/2000/svg';
+const xlinkNS = 'http://www.w3.org/1999/xlink';
+const faces = ['front','back','left','right','top','bottom'];
+const adjustments = ['scale','offsetX','offsetY','rotation'];
+const neutral = {scale:100,offsetX:0,offsetY:0,rotation:0};
+const artwork = Object.fromEntries(faces.map(id => [id,{...neutral,src:'',ratio:1}]));
+const initialOrbit = () => new DOMMatrix().rotate(-22,0,0).rotate(0,31,0);
+const view = {orbit:initialOrbit(),zoom:1,panX:0,panY:0,focus:''};
+const presets={presetOpen:0,presetHalf:50,presetClosed:100};
+const localFolds = new Map();
+const foldTargets = new Map();
+let selectedFace = '', motion = 0, demoIndex = -1, demoStage = '';
+let dims = {L:120,W:70,H:145,T:0.6};
+let geometry, hinges, highlights, progress = 100, playing = false, animation = 0;
+const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
+const rectangle = (w,h) => [[0,0],[w,0],[w,h],[0,h]];
+
+function svgTag(name, attrs = {}, parent) {
+  const node = document.createElementNS(svgNS,name);
+  for (const [key,value] of Object.entries(attrs)) node.setAttribute(key,value);
+  if (parent) parent.append(node);
+  return node;
+}
+const pointList = points => points.map(point => point.join(',')).join(' ');
+
+// 刀版的数学坐标以左下角为原点。面板局部坐标与 CSS 一致，向下为正。
+function buildGeometry({L,W,H,T}) {
+  const panels=[], byName={};
+  function add(id,name,parent,x,y,points,axis,step,color,baseEdge,artKey,reverseArt=false) {
+    const absolute=parent?byName[parent].flat:[0,0];
+    const panel={id,name,parent,x,y,points,axis,step,color,baseEdge,artKey,reverseArt,
+      flat:[absolute[0]+x,absolute[1]-y]};
+    byName[id]=panel;
+    panels.push(panel);
+  }
+  const walls=[
+    ['front','前面',null,0,L],['right','右侧','front',L,W],
+    ['back','背面','right',W,L],['left','左侧','back',L,W]
+  ];
+  for (const [id,name,parent,x,length] of walls) {
+    add(id,name,parent,x,0,rectangle(length,H),'Y',parent?'walls':'','#e6cba2',3,id);
+  }
+  for (const [id,name,,,length] of walls) {
+    const outer=id==='front'||id==='back';
+    const depth=outer?W/2:Math.min(W,L)/2;
+    const reverseArt=id==='back';
+    const top= id==='front'?'top':id+'Top';
+    const bottom= id==='front'?'bottom':id+'Bottom';
+    add(top,name+'上摇盖',id,0,0,[[0,0],[length,0],[length,-depth],[0,-depth]],
+      'X',outer?'lids':'dust','#efd4aa',0,outer?'top':undefined,reverseArt);
+    add(bottom,name+'下摇盖',id,0,H,rectangle(length,depth),
+      'X',outer?'lids':'dust','#efd4aa',0,outer?'bottom':undefined,reverseArt);
+  }
+  const width=2*(L+W), height=H+W;
+  const margin=Math.max(14,Math.max(L,W,H)*.12+6);
+  const project=(panel,[x,y])=>[panel.flat[0]+x,W/2-panel.flat[1]+y];
+  return {panels,width,height,margin,project,L,W,H,T};
+}
+
+function createFaceGraphic(group,panel,prefix,showArtwork) {
+  const xs = panel.points.map(p=>p[0]), ys = panel.points.map(p=>p[1]);
+  const x = Math.min(...xs), y = Math.min(...ys);
+  const w = Math.max(...xs)-x, h = Math.max(...ys)-y;
+  svgTag('polygon',{points:pointList(panel.points),fill:panel.color},group);
+  if (!showArtwork) return null;
+  const clipId = prefix+'-clip-'+panel.id;
+  const defs = svgTag('defs',{},group);
+  svgTag('polygon',{points:pointList(panel.points)},svgTag('clipPath',{id:clipId},defs));
+  const clipped = svgTag('g',{'clip-path':'url(#'+clipId+')'},group);
+  const [pageX,pageY]=geometry.project(panel,[0,0]);
+  const {width,height,margin,L,W}=geometry;
+  const baseImage=svgTag('image',{x:-margin-pageX,y:-margin-pageY,width:width+2*margin,
+    height:height+2*margin,preserveAspectRatio:'none',display:'none'},clipped);
+  const flat=prefix==='flat';
+  if (!panel.artKey) return {baseImage,flat};
+  const fullLid=panel.artKey==='top'||panel.artKey==='bottom';
+  const artY=panel.artKey==='top'?-W:0;
+  // 同一张盖面贴图跨两片外摇盖，背侧半片反向映射以便合盖后对齐。
+  if (panel.reverseArt) {
+    const turn=svgTag('g',{transform:'translate('+L+' '+(artY*2+W)+') rotate(180)'},clipped);
+    const image=svgTag('image',{preserveAspectRatio:'none',display:'none'},turn);
+    return {image,baseImage,x:0,y:artY,w:L,h:W,id:panel.artKey,flat};
+  }
+  const image=svgTag('image',{preserveAspectRatio:'none',display:'none'},clipped);
+  return {image,baseImage,x,y:fullLid?artY:y,w,h:fullLid?W:h,id:panel.artKey,flat};
+}
+
+function applyArtwork(refs) {
+  const base=design?.signature===templateSignature()?design.url:'';
+  for (const {image,baseImage,x,y,w,h,id,flat} of refs) {
+    const visible=!flat || byId('showFlatArt').checked;
+    setImageSource(baseImage,visible?base:'');
+    if (!image) continue;
+    const art=artwork[id];
+    setImageSource(image,visible?art.src:'');
+    if (!art.src || !visible) continue;
+    // 按覆盖模式等比缩放，再在面板本地坐标中完成偏移与旋转。
+    const height = Math.max(h,w/art.ratio)*art.scale/100;
+    const width = height*art.ratio;
+    const cx = x+w/2+w*art.offsetX/100, cy = y+h/2+h*art.offsetY/100;
+    for (const [key,value] of Object.entries({x:cx-width/2,y:cy-height/2,width,height,
+      transform:'rotate('+art.rotation+' '+cx+' '+cy+')',display:'inline'})) image.setAttribute(key,value);
+  }
+}
+
+function setImageSource(image,src) {
+  image.setAttribute('display',src?'inline':'none');
+  if (src && image.getAttribute('href')!==src) {
+    image.setAttribute('href',src);
+    image.setAttributeNS(xlinkNS,'xlink:href',src);
+  } else if (!src && image.getAttribute('href')) {
+    image.removeAttribute('href');
+    image.removeAttributeNS(xlinkNS,'href');
+  }
+}
+
+let flatArt = [], solidArt = [];
+function drawFlat() {
+  const svg = byId('drawing');
+  const {panels,width,height,margin,project,L,W,H,T} = geometry;
+  const pageWidth = width+2*margin, pageHeight = height+2*margin;
+  svg.setAttribute('viewBox',[-margin,-margin,pageWidth,pageHeight].join(' '));
+  svg.replaceChildren();
+  flatArt = [];
+  highlights = [];
+  const artLayer = svgTag('g',{id:'panels'},svg);
+  const cutLayer = svgTag('g',{id:'cut-lines',fill:'none',stroke:'#263c36','stroke-width':'.28','stroke-linejoin':'round'},svg);
+  const foldLayer = svgTag('g',{id:'fold-lines',fill:'none',stroke:'#3166a5','stroke-width':'.26','stroke-dasharray':'2 1.3'},svg);
+  const highlightLayer = svgTag('g',{'data-preview':'true',fill:'none',stroke:'#d37528','stroke-width':'1.05'},svg);
+  const font = Math.min(L,W,H)*.105;
+  const edgeKey = (a,b) => [a,b].map(point=>point.map(v=>v.toFixed(7)).join(',')).sort().join('|');
+  const foldEdges = new Set(panels.filter(p=>p.parent).map(p =>
+    edgeKey(project(p,p.points[p.baseEdge]),project(p,p.points[(p.baseEdge+1)%p.points.length]))));
+  const written = new Set();
+  for (const panel of panels) {
+    const origin = project(panel,[0,0]);
+    const group = svgTag('g',{id:'panel-'+panel.id,transform:'translate('+origin.join(' ')+')'},artLayer);
+    const ref = createFaceGraphic(group,panel,'flat',true);
+    if (ref) flatArt.push(ref);
+    const outline = panel.points.map(p=>project(panel,p));
+    outline.forEach((a,i)=>{
+      const b = outline[(i+1)%outline.length];
+      const key = edgeKey(a,b);
+      if (written.has(key)) return;
+      written.add(key);
+      svgTag('path',{d:'M '+a.join(' ')+' L '+b.join(' ')},foldEdges.has(key)?foldLayer:cutLayer);
+    });
+    const highlight = svgTag('polygon',{points:pointList(outline),display:'none'},highlightLayer);
+    let crease = null;
+    if (panel.parent) {
+      const a = outline[panel.baseEdge], b = outline[(panel.baseEdge+1)%outline.length];
+      crease = svgTag('path',{d:'M '+a.join(' ')+' L '+b.join(' '),display:'none'},highlightLayer);
+    }
+    highlights.push({node:highlight,crease,id:panel.id,step:panel.step});
+    svgTag('polygon',{points:pointList(outline),fill:'transparent','data-face':panel.id,
+      'data-preview':'true'},artLayer);
+  }
+  const dimensionSize=Math.min(margin*.36,Math.max(font*.75,width*.014));
+  drawDimensions(svg,dimensionSize);
+  applyArtwork(flatArt);
+}
+
+function drawDimensions(svg,font) {
+  const {L,W,H,height,margin} = geometry;
+  const layer = svgTag('g',{id:'dimensions','font-family':'sans-serif','font-size':font*.86},svg);
+  const ink = '#115e4d';
+  // 尺寸线以真实刀版坐标绘制，屏幕和 SVG 导出使用同一组线段。
+  function measure(a,b,offset,label) {
+    const vertical = a[0]===b[0];
+    const move = p => vertical ? [p[0]+offset,p[1]] : [p[0],p[1]+offset];
+    const u=move(a), v=move(b);
+    const x=(u[0]+v[0])/2, y=(u[1]+v[1])/2;
+    const length=Math.hypot(v[0]-u[0],v[1]-u[1]);
+    const arrow=Math.min(font*.43,length*.22);
+    const pair = (tip,direction) => vertical
+      ? [[tip[0]-arrow*.42,tip[1]+direction*arrow],tip,[tip[0]+arrow*.42,tip[1]+direction*arrow]]
+      : [[tip[0]+direction*arrow,tip[1]-arrow*.42],tip,[tip[0]+direction*arrow,tip[1]+arrow*.42]];
+    svgTag('path',{d:'M '+a.join(' ')+' L '+u.join(' ')+' L '+v.join(' ')+' L '+b.join(' '),
+      stroke:ink,'stroke-width':'.32',fill:'none'},layer);
+    for (const [tip,direction] of [[u,1],[v,-1]]) svgTag('polyline',{
+      points:pointList(pair(tip,direction)),stroke:ink,'stroke-width':'.32',fill:'none'},layer);
+    const shortHorizontal = !vertical && length<label.length*font*.56;
+    const tx = shortHorizontal ? v[0]+font*.45 : x;
+    const ty = vertical ? y : y-font*.42;
+    const text=svgTag('text',{x:tx,y:ty,fill:ink,'text-anchor':shortHorizontal?'start':'middle',
+      'dominant-baseline':vertical?'central':'auto'},layer);
+    if (vertical) text.setAttribute('transform','translate('+(-font*.58)+' 0) rotate(-90 '+x+' '+y+')');
+    text.textContent=label;
+  }
+  const fmt=value=>Number(value.toFixed(2))+' mm';
+  let start=0;
+  for (const length of [L,W,L,W]) {
+    measure([start,height],[start+length,height],margin*.49,fmt(length));
+    start+=length;
+  }
+  for (const [from,to] of [[0,W/2],[W/2,W/2+H],[W/2+H,height]]) {
+    measure([0,from],[0,to],-margin*.53,fmt(to-from));
+  }
+}
+
+function drawSolid() {
+  const model = byId('model');
+  model.replaceChildren();
+  hinges = new Map();
+  solidArt = [];
+  const mmScale = 230/Math.max(geometry.L,geometry.W,geometry.H);
+  for (const panel of geometry.panels) {
+    const holder = document.createElement('div');
+    holder.className = 'hinge';
+    const parent = panel.parent ? hinges.get(panel.parent) : model;
+    parent.append(holder);
+    hinges.set(panel.id,holder);
+    // 局部原点就是折线的铰链。每个子面继承父面的变换。
+    const scaled = panel.points.map(([x,y])=>[x*mmScale,y*mmScale]);
+    const minX=Math.min(...scaled.map(p=>p[0])), minY=Math.min(...scaled.map(p=>p[1]));
+    const w=Math.max(...scaled.map(p=>p[0]))-minX, h=Math.max(...scaled.map(p=>p[1]))-minY;
+    const thickness = geometry.T*mmScale;
+    const skin = svgTag('svg',{class:'skin',width:w,height:h,viewBox:[minX,minY,w,h].join(' ')},holder);
+    skin.style.left = minX+'px';
+    skin.style.top = minY+'px';
+    const surface = svgTag('g',{transform:'scale('+mmScale+')'},skin);
+    const ref = createFaceGraphic(surface,panel,'solid',true);
+    if (ref) solidArt.push(ref);
+    svgTag('polygon',{points:pointList(panel.points),fill:'none',stroke:'#785d3d','stroke-width':'.45'},surface);
+    svgTag('polygon',{points:pointList(panel.points),fill:'transparent','data-face':panel.id,'data-overlay':'true'},surface);
+    if (thickness > 0) {
+      const inner = skin.cloneNode(false);
+      inner.style.transform = 'translateZ('+(-thickness)+'px)';
+      svgTag('polygon',{points:pointList(scaled),fill:'#cfb48d','data-face':panel.id},inner);
+      holder.prepend(inner);
+      scaled.forEach(([x,y],i)=>{
+        const [endX,endY] = scaled[(i+1)%scaled.length];
+        const edge = document.createElement('div');
+        edge.className = 'edge';
+        edge.style.width = Math.hypot(endX-x,endY-y)+'px';
+        edge.style.height = thickness+'px';
+        edge.style.transform = 'translate('+x+'px,'+y+'px) rotate('+Math.atan2(endY-y,endX-x)+'rad) rotateX(-90deg)';
+        holder.prepend(edge);
+      });
+    }
+  }
+  applyArtwork(solidArt);
+}
+
+const stages = {
+  walls:{start:0,end:45,label:'折起四侧面板'},
+  dust:{start:45,end:65,label:'折入内摇盖'},
+  lids:{start:65,end:100,label:'合上外摇盖'}
+};
+
+function setPose() {
+  const scale = 230/Math.max(geometry.L,geometry.W,geometry.H);
+  const clearance = (geometry.T+.08)*scale;
+  const matrices = new Map();
+  const inverseRotations=new Map();
+  const focused=geometry.panels.find(panel=>panel.id===view.focus);
+  const focusedAtTop=focused?.id.endsWith('Top');
+  let focusCenter=null;
+  const bounds = [[Infinity,Infinity,Infinity],[-Infinity,-Infinity,-Infinity]];
+  const stageFraction = step => {
+    const {start,end} = stages[step];
+    return clamp((progress-start)/(end-start),0,1);
+  };
+  for (const panel of geometry.panels) {
+    const fraction = localFolds.get(panel.id) ?? (panel.step ? stageFraction(panel.step) : 0);
+    const sign = panel.id==='bottom' || panel.id.endsWith('Bottom') ? -1 : 1;
+    const angle = 90*fraction*sign;
+    const dustShift = panel.step==='dust' ? clearance*fraction*(sign===1 ? 1 : -1) : 0;
+    const local = new DOMMatrix().translate(panel.x*scale,panel.y*scale+dustShift,0)
+      .rotate(panel.axis==='X'?angle:0,panel.axis==='Y'?angle:0,0);
+    const hinge=hinges.get(panel.id);
+    hinge.style.transform=local.toString();
+    const covering=focused?.step==='dust' && panel.step==='lids' && progress>=65 &&
+      fraction>.88 && (panel.artKey==='top')===focusedAtTop;
+    hinge.classList.toggle('covering-focus',Boolean(covering));
+    const world = panel.parent ? matrices.get(panel.parent).multiply(local) : local;
+    matrices.set(panel.id,world);
+    if (focused) {
+      // 从当前铰链姿态求逆旋转，让所点选的纸板正面朝向相机。
+      const inverse=new DOMMatrix().rotate(panel.axis==='X'?-angle:0,panel.axis==='Y'?-angle:0,0);
+      const parentInverse=inverseRotations.get(panel.parent);
+      inverseRotations.set(panel.id,parentInverse?inverse.multiply(parentInverse):inverse);
+      if (panel===focused) {
+        const middle=[0,1].map(axis=>panel.points.reduce((sum,point)=>sum+point[axis],0)/
+          panel.points.length*scale);
+        const point=world.transformPoint(new DOMPoint(middle[0],middle[1],0));
+        focusCenter=[point.x,point.y,point.z];
+        view.orbit=new DOMMatrix().rotate(-10,0,0).rotate(0,12,0).multiply(inverseRotations.get(panel.id));
+      }
+    }
+    for (const [x,y] of panel.points) {
+      const p = world.transformPoint(new DOMPoint(x*scale,y*scale,0));
+      [p.x,p.y,p.z].forEach((value,i)=>{
+        bounds[0][i]=Math.min(bounds[0][i],value);
+        bounds[1][i]=Math.max(bounds[1][i],value);
+      });
+    }
+  }
+  // 根据折叠后的实际包围盒重新居中，避免从展开到闭合时模型跑出画布。
+  const center = focusCenter ?? bounds[0].map((value,i)=>(value+bounds[1][i])/2);
+  const span = bounds[0].map((value,i)=>bounds[1][i]-value);
+  const stage = byId('stage');
+  const fit = Math.min(stage.clientWidth*.82/Math.hypot(span[0],span[2]),
+    stage.clientHeight*.78/Math.hypot(span[1],span[2]*.65));
+  byId('model').style.transform = 'translate3d('+center.map(n=>-n+'px').join(',')+')';
+  byId('camera').style.transform = 'translate('+view.panX+'px,'+view.panY+'px) scale('+fit*view.zoom+
+    ') '+view.orbit.toString();
+  drawGuides(center,fit*view.zoom,scale);
+}
+
+function drawGuides(center,fit,mmScale) {
+  const svg=byId('guides'), stage=byId('stage');
+  svg.replaceChildren();
+  if (!byId('showGuides').checked) return;
+  const w=stage.clientWidth, h=stage.clientHeight;
+  if (!w || !h) return;
+  svg.setAttribute('viewBox','0 0 '+w+' '+h);
+  const axisOrigin=[36,h-35];
+  const axes=[['X',1,0,0,'#b2403d'],['Y',0,-1,0,'#137853'],['Z',0,0,1,'#315ea1']];
+  for (const [label,x,y,z,color] of axes) {
+    const point=view.orbit.transformPoint(new DOMPoint(x*24,y*24,z*24,0));
+    const ex=axisOrigin[0]+point.x, ey=axisOrigin[1]+point.y;
+    svgTag('path',{d:'M '+axisOrigin.join(' ')+' L '+ex+' '+ey,stroke:color,'stroke-width':1.6},svg);
+    svgTag('text',{x:ex+2,y:ey-2,fill:color,'font-size':11,'font-weight':700},svg).textContent=label;
+  }
+  if (progress!==100 || localFolds.size) return;
+  // 投影三个方向的箱体边，优先选择靠外且在当前视角下清晰的边。
+  const project = ([x,y,z]) => {
+    const point=view.orbit.transformPoint(new DOMPoint(x-center[0],y-center[1],z-center[2]));
+    const depth=point.z*fit;
+    const perspective=1300/Math.max(1,1300-depth);
+    return [w/2+(view.panX+point.x*fit)*perspective,h/2+(view.panY+point.y*fit)*perspective,depth];
+  };
+  const lengths=[geometry.L,geometry.H,-geometry.W].map(value=>value*mmScale);
+  const boxCenter=project(lengths.map(value=>value/2));
+  const occupied=[];
+  for (const [label,axis] of [['L',0],['W',2],['H',1]]) {
+    const others=[0,1,2].filter(index=>index!==axis);
+    const candidates=[];
+    for (const i of [0,1]) for (const j of [0,1]) {
+      const from=[0,0,0];
+      from[others[0]]=lengths[others[0]]*i;
+      from[others[1]]=lengths[others[1]]*j;
+      const to=from.slice();
+      to[axis]=lengths[axis];
+      const a=project(from), b=project(to);
+      const dx=b[0]-a[0], dy=b[1]-a[1];
+      const span=Math.hypot(dx,dy);
+      const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+      const outward=[mid[0]-boxCenter[0],mid[1]-boxCenter[1]];
+      const distance=Math.hypot(...outward);
+      let normal=span>8?[-dy/span,dx/span]:
+        distance>1?outward.map(value=>value/distance):[0,-1];
+      if (normal[0]*outward[0]+normal[1]*outward[1]<0) normal=normal.map(value=>-value);
+      const separation=normal[0]*outward[0]+normal[1]*outward[1];
+      const caption=label+' '+geometry[label]+' mm';
+      const inset=Math.min(w/2,caption.length*3.7+7);
+      const anchor=[clamp(mid[0]+normal[0]*29,inset,w-inset),clamp(mid[1]+normal[1]*29,10,h-10)];
+      const crowded=occupied.some(point=>Math.abs(point[0]-anchor[0])<72 &&
+        Math.abs(point[1]-anchor[1])<19);
+      const score=separation+Math.min(span,100)*.45+(a[2]+b[2])*.035-(crowded?150:0);
+      candidates.push({a,b,normal,anchor,caption,score});
+    }
+    candidates.sort((a,b)=>b.score-a.score);
+    const {a,b,normal,anchor,caption}=candidates[0];
+    const [ox,oy]=normal.map(value=>value*15);
+    occupied.push(anchor);
+    svgTag('path',{d:'M '+a[0]+' '+a[1]+' l '+ox+' '+oy+' L '+(b[0]+ox)+' '+(b[1]+oy)+
+      ' L '+b[0]+' '+b[1],fill:'none',stroke:'#115e4d','stroke-width':1.25},svg);
+    svgTag('text',{x:anchor[0],y:anchor[1],'text-anchor':'middle','dominant-baseline':'central',
+      'font-size':12,'font-weight':650,fill:'#115e4d',stroke:'#fff','stroke-width':3,
+      'paint-order':'stroke','data-dimension':label},svg).textContent=caption;
+  }
+}
+
+function updateHighlights(step) {
+  for (const {node,crease,id,step:panelStep} of highlights) {
+    const active=step && panelStep===step;
+    const selected=isFaceSelected(id);
+    node.setAttribute('display',selected?'inline':'none');
+    node.setAttribute('stroke','#1748b3');
+    node.setAttribute('stroke-width','3');
+    node.setAttribute('vector-effect','non-scaling-stroke');
+    node.setAttribute('fill','#1748b3');
+    node.setAttribute('fill-opacity','.15');
+    if (crease) crease.setAttribute('display',active?'inline':'none');
+  }
+}
+
+function setProgress(value) {
+  progress = clamp(Number(value),0,100);
+  byId('progress').value = progress;
+  byId('percent').textContent = Math.round(progress)+'%';
+  for (const [id,value] of Object.entries(presets)) {
+    byId(id).setAttribute('aria-pressed',String(progress===value && !localFolds.size));
+  }
+  const step = Object.keys(stages).find(key=>progress>0 && progress<100 && progress<stages[key].end);
+  byId('phase').textContent = demoIndex>=0 ? '拆盒演示' : localFolds.size ? '单片开合' : step ? stages[step].label :
+    progress===0 ? '完全展开' : '完全闭合';
+  updateHighlights(demoIndex>=0?demoStage:step);
+  syncPartAction();
+  setPose();
+}
+
+const dimensionIds = {L:'length',W:'width',H:'height',T:'thickness'};
+function updateDimensions() {
+  const changed = {};
+  let valid = true;
+  for (const [key,id] of Object.entries(dimensionIds)) {
+    const input = byId(id), value = input.valueAsNumber;
+    const accepted = Number.isFinite(value) && value>=Number(input.min) && value<=Number(input.max);
+    input.setAttribute('aria-invalid',String(!accepted));
+    if (accepted) changed[key] = value;
+    valid &&= accepted;
+  }
+  const notice = byId('dimHint');
+  notice.hidden = valid;
+  notice.textContent = valid ? '' : '长、宽、高请输入 10–1000 mm，纸厚请输入 0–5 mm。';
+  byId('export').disabled = !valid;
+  byId('importDesign').disabled = !valid;
+  if (!valid) return;
+  dims = changed;
+  geometry = buildGeometry(dims);
+  drawFlat();
+  drawSolid();
+  updateDesignStatus();
+  selectFace(selectedFace);
+  setProgress(progress);
+}
+for (const id of Object.values(dimensionIds)) byId(id).addEventListener('input',updateDimensions);
+
+function stopAnimation() {
+  playing = false;
+  cancelAnimationFrame(animation);
+  byId('play').textContent = '播放';
+  byId('play').setAttribute('aria-label','播放折叠动画');
+}
+const demoSteps = [
+  {value:100,label:'成盒起点',step:''},
+  {value:65,label:'打开外摇盖',step:'lids'},
+  {value:45,label:'翻出四片内摇盖',step:'dust'},
+  {value:0,label:'摊开盒身侧板',step:'walls'}
+];
+
+function updateDemoControls() {
+  byId('demo').textContent=demoIndex<0?'逐步拆盒':'退出拆盒';
+  byId('prevStep').disabled=demoIndex<=0;
+  byId('nextStep').disabled=demoIndex<0 || demoIndex===demoSteps.length-1;
+  const note=byId('demoNote');
+  note.hidden=demoIndex<0;
+  note.textContent=demoIndex<0?'':(demoIndex+1)+' / '+demoSteps.length+' · '+demoSteps[demoIndex].label;
+}
+
+function clearMotion() {
+  cancelAnimationFrame(motion);
+  motion=0;
+}
+function clearLocalFolds() {
+  clearMotion();
+  localFolds.clear();
+  foldTargets.clear();
+  syncPartAction();
+}
+function leaveDemo() {
+  if (demoIndex<0) return;
+  clearMotion();
+  demoIndex=-1;
+  demoStage='';
+  updateDemoControls();
+}
+function animatePose(duration,render) {
+  clearMotion();
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    render(1);
+    return;
+  }
+  const start=performance.now();
+  function tick(now) {
+    const fraction=clamp((now-start)/duration,0,1);
+    const eased=fraction*fraction*(3-2*fraction);
+    render(eased);
+    motion=fraction<1?requestAnimationFrame(tick):0;
+  }
+  motion=requestAnimationFrame(tick);
+}
+function goToDemoStep(index) {
+  if (index<0 || index>=demoSteps.length) return;
+  const initial=progress;
+  const oldIndex=demoIndex;
+  const destination=demoSteps[index];
+  demoStage=(index<oldIndex?demoSteps[oldIndex]:destination).step;
+  demoIndex=index;
+  updateDemoControls();
+  animatePose(510,fraction=>setProgress(fraction===1?destination.value:initial+(destination.value-initial)*fraction));
+}
+byId('demo').addEventListener('click',()=>{
+  if (demoIndex>=0) {
+    leaveDemo();
+    setProgress(progress);
+    return;
+  }
+  stopAnimation();
+  clearLocalFolds();
+  goToDemoStep(0);
+});
+byId('prevStep').addEventListener('click',()=>goToDemoStep(demoIndex-1));
+byId('nextStep').addEventListener('click',()=>goToDemoStep(demoIndex+1));
+
+const presentName = panel => panel.name;
+const canFlip = panel => panel && (panel.step==='dust' || panel.step==='lids');
+function baseFold(panel,value=progress) {
+  const {start,end}=stages[panel.step];
+  return clamp((value-start)/(end-start),0,1);
+}
+function syncPartAction() {
+  const panel=geometry.panels.find(item=>item.id===selectedFace);
+  const button=byId('flipPart');
+  button.disabled=!canFlip(panel);
+  button.textContent=canFlip(panel) && (foldTargets.get(panel.id) ?? baseFold(panel))<.5?'合上面板':'翻开面板';
+}
+function isFaceSelected(id) {
+  return id===selectedFace || ((selectedFace==='top'||selectedFace==='bottom') &&
+    geometry.panels.some(panel=>panel.id===id && panel.artKey===selectedFace));
+}
+function selectFace(id) {
+  const panel=geometry.panels.find(item=>item.id===id);
+  selectedFace=panel?.id ?? '';
+  if (view.focus!==selectedFace) view.focus='';
+  if (panel?.artKey) artworkFace=panel.artKey;
+  showArtworkControls();
+  byId('partPicker').value=selectedFace;
+  for (const node of document.querySelectorAll('#stage [data-face]')) {
+    node.classList.toggle('selected',isFaceSelected(node.getAttribute('data-face')));
+  }
+  const info=byId('coordinates');
+  if (panel) {
+    const [x,y]=geometry.project(panel,[0,0]);
+    info.textContent=presentName(panel)+(panel.parent?' · 折线端点':' · 面板左上角')+
+      ' · X '+Number(x.toFixed(2))+' mm · Y '+Number((geometry.height-y).toFixed(2))+' mm · 原点 (0, 0)';
+  } else {
+    info.textContent='点选面板查看坐标 · 左下角为原点 · X 向右、Y 向上';
+  }
+  syncPartAction();
+}
+function flipFace(id) {
+  const panel=geometry.panels.find(item=>item.id===id);
+  if (!canFlip(panel)) {
+    selectFace(id);
+    setProgress(progress);
+    return;
+  }
+  stopAnimation();
+  leaveDemo();
+  selectFace(id);
+  const start=localFolds.get(id) ?? baseFold(panel);
+  const goal=(foldTargets.get(id) ?? start)>=.5?0:1;
+  localFolds.set(id,start);
+  foldTargets.set(id,goal);
+  const starts=new Map(localFolds);
+  syncPartAction();
+  animatePose(300,fraction=>{
+    for (const [key,target] of foldTargets) {
+      const part=geometry.panels.find(item=>item.id===key);
+      if (fraction===1 && target===baseFold(part)) {
+        localFolds.delete(key);
+        foldTargets.delete(key);
+      } else {
+        localFolds.set(key,starts.get(key)+(target-starts.get(key))*fraction);
+      }
+    }
+    setProgress(progress);
+  });
+}
+let viewTimer;
+function finishViewTransition() {
+  clearTimeout(viewTimer);
+  byId('stage').classList.remove('view-transition');
+}
+function focusFace(id) {
+  const stage=byId('stage');
+  clearTimeout(viewTimer);
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    stage.classList.add('view-transition');
+    viewTimer=setTimeout(finishViewTransition,350);
+  }
+  selectFace(id);
+  Object.assign(view,{focus:id,panX:0,panY:0,zoom:1});
+  setProgress(progress);
+}
+byId('drawing').addEventListener('click',event=>{
+  const face=event.target.closest('[data-face]');
+  if (face) focusFace(face.getAttribute('data-face'));
+});
+byId('partPicker').addEventListener('change',event=>{
+  selectFace(event.target.value);
+  setProgress(progress);
+});
+byId('flipPart').addEventListener('click',()=>flipFace(selectedFace));
+byId('showGuides').addEventListener('change',setPose);
+
+function goToPreset(destination) {
+  stopAnimation();
+  leaveDemo();
+  const initial=progress;
+  const overrides=new Map(localFolds);
+  foldTargets.clear();
+  animatePose(650,fraction=>{
+    const next=fraction===1?destination:initial+(destination-initial)*fraction;
+    if (fraction===1) {
+      localFolds.clear();
+    } else {
+      for (const [id,current] of overrides) {
+        const panel=geometry.panels.find(item=>item.id===id);
+        const base=baseFold(panel,next);
+        localFolds.set(id,current+(base-current)*fraction);
+      }
+    }
+    setProgress(next);
+  });
+}
+for (const [id,value] of Object.entries(presets)) {
+  byId(id).addEventListener('click',()=>goToPreset(value));
+}
+
+byId('progress').addEventListener('input',event=>{
+  stopAnimation();
+  leaveDemo();
+  clearLocalFolds();
+  setProgress(event.target.value);
+});
+byId('play').addEventListener('click',()=>{
+  if (playing) {stopAnimation();return;}
+  leaveDemo();
+  clearLocalFolds();
+  if (progress>=100) setProgress(0);
+  const initial = progress, start = performance.now();
+  playing = true;
+  byId('play').textContent = '暂停';
+  byId('play').setAttribute('aria-label','暂停折叠动画');
+  function tick(now) {
+    if (!playing) return;
+    setProgress(initial+(now-start)/34);
+    if (progress<100) animation=requestAnimationFrame(tick);
+    else stopAnimation();
+  }
+  animation=requestAnimationFrame(tick);
+});
+
+const stage = byId('stage');
+const pointers = new Map();
+function resetView() {
+  finishViewTransition();
+  Object.assign(view,{orbit:initialOrbit(),zoom:1,panX:0,panY:0,focus:''});
+  setPose();
+}
+byId('resetView').addEventListener('click',resetView);
+// 每次增量旋转绕屏幕轴左乘。视角转到背面或底面后，拖动方向仍以屏幕为准。
+function orbitBy(dx,dy) {
+  finishViewTransition();
+  view.focus='';
+  view.orbit=new DOMMatrix().rotate(-dy,0,0).rotate(0,dx,0).multiply(view.orbit);
+}
+stage.addEventListener('contextmenu',e=>e.preventDefault());
+stage.addEventListener('pointerdown',e=>{
+  if (![0,1,2].includes(e.button)) return;
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,
+    moved:false,pan:e.button!==0 || e.shiftKey,face:e.target.closest('[data-face]')?.getAttribute('data-face')});
+  if (pointers.size>1) for (const pointer of pointers.values()) pointer.moved=true;
+  stage.classList.add('drag');
+});
+stage.addEventListener('pointermove',e=>{
+  const current = pointers.get(e.pointerId);
+  if (!current) return;
+  const dx=e.clientX-current.x, dy=e.clientY-current.y;
+  if (!current.moved && Math.hypot(e.clientX-current.startX,e.clientY-current.startY)<5) return;
+  current.moved=true;
+  const other = [...pointers.entries()].find(([id])=>id!==e.pointerId)?.[1];
+  if (other) {
+    const before = Math.hypot(current.x-other.x,current.y-other.y);
+    const after = Math.hypot(e.clientX-other.x,e.clientY-other.y);
+    if (before>4) view.zoom=clamp(view.zoom*after/before,.24,5);
+    view.panX+=dx/2;
+    view.panY+=dy/2;
+  } else if (current.pan || e.shiftKey) {
+    view.panX+=dx;
+    view.panY+=dy;
+  } else {
+    orbitBy(dx*.48,dy*.48);
+  }
+  current.x=e.clientX;
+  current.y=e.clientY;
+  setPose();
+});
+for (const action of ['pointerup','pointercancel','lostpointercapture']) stage.addEventListener(action,e=>{
+  const pointer=pointers.get(e.pointerId);
+  pointers.delete(e.pointerId);
+  if (!pointers.size) stage.classList.remove('drag');
+  if (action==='pointerup' && pointer?.face && !pointer.moved && !pointer.pan &&
+    Math.hypot(e.clientX-pointer.startX,e.clientY-pointer.startY)<5) focusFace(pointer.face);
+});
+stage.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const unit = e.deltaMode===1 ? 16 : e.deltaMode===2 ? stage.clientHeight : 1;
+  view.zoom=clamp(view.zoom*Math.exp(-e.deltaY*unit*.0014),.24,5);
+  setPose();
+},{passive:false});
+stage.addEventListener('keydown',e=>{
+  const actions = {
+    ArrowLeft:()=>orbitBy(-8,0), ArrowRight:()=>orbitBy(8,0),
+    ArrowUp:()=>orbitBy(0,-8), ArrowDown:()=>orbitBy(0,8),
+    '+':()=>view.zoom=clamp(view.zoom*1.15,.24,5),
+    '=':()=>view.zoom=clamp(view.zoom*1.15,.24,5),
+    '-':()=>view.zoom=clamp(view.zoom/1.15,.24,5)
+  };
+  if (!Object.hasOwn(actions,e.key)) return;
+  e.preventDefault();
+  actions[e.key]();
+  setPose();
+});
+new ResizeObserver(()=>setPose()).observe(stage);
+
+const faceNames={front:'正面',back:'背面',left:'左侧',right:'右侧',top:'顶面',bottom:'底面'};
+const pendingUploads=new Map();
+const cardNodes=new Map();
+let artworkFace='front';
+function hint(message,error=false) {
+  byId('hint').textContent=message;
+  byId('hint').classList.toggle('error',error);
+}
+function showArtworkControls() {
+  const entry=artwork[artworkFace];
+  byId('artEditing').textContent='正在调整 '+faceNames[artworkFace];
+  for (const name of adjustments) {
+    byId(name).value=entry[name];
+    byId(name).disabled=!entry.src;
+    byId(name+'Value').textContent=entry[name]+(name==='rotation'?'°':'%');
+  }
+  for (const [id,{card,preview,thumb,upload,remove}] of cardNodes) {
+    const src=artwork[id].src;
+    card.classList.toggle('active',id===artworkFace);
+    preview.setAttribute('aria-pressed',String(id===artworkFace));
+    thumb.hidden=!src;
+    if (src && thumb.getAttribute('src')!==src) thumb.src=src;
+    if (!src) thumb.removeAttribute('src');
+    upload.textContent=src?'替换':'上传';
+    remove.disabled=!src && !pendingUploads.has(id);
+  }
+}
+function refreshArtwork() {
+  showArtworkControls();
+  applyArtwork(flatArt);
+  applyArtwork(solidArt);
+}
+byId('showFlatArt').addEventListener('change',()=>applyArtwork(flatArt));
+for (const name of adjustments) byId(name).addEventListener('input',event=>{
+  artwork[artworkFace][name]=Number(event.target.value);
+  refreshArtwork();
+});
+function createArtworkCards() {
+  for (const id of faces) {
+    const card=document.createElement('div');
+    card.className='face-card';
+    const preview=document.createElement('button');
+    preview.className='face-preview';
+    const label=document.createElement('span');
+    label.textContent=faceNames[id];
+    const thumb=document.createElement('img');
+    thumb.alt='';
+    thumb.hidden=true;
+    preview.append(label,thumb);
+    const actions=document.createElement('div');
+    actions.className='face-actions';
+    const upload=document.createElement('button');
+    upload.setAttribute('aria-label',faceNames[id]+'上传或替换图片');
+    const remove=document.createElement('button');
+    remove.textContent='移除';
+    remove.setAttribute('aria-label','移除'+faceNames[id]+'贴图');
+    const input=document.createElement('input');
+    input.type='file';
+    input.accept='image/*';
+    input.hidden=true;
+    function activate() {
+      selectFace(id);
+      setProgress(progress);
+    }
+    preview.addEventListener('click',activate);
+    upload.addEventListener('click',()=>{
+      activate();
+      input.click();
+    });
+    input.addEventListener('change',()=>{
+      const file=input.files[0];
+      input.value='';
+      if (file) uploadArtwork(id,file);
+    });
+    remove.addEventListener('click',()=>{
+      pendingUploads.delete(id);
+      artwork[id]={...neutral,src:'',ratio:1};
+      activate();
+      refreshArtwork();
+      hint('已移除'+faceNames[id]+'贴图。');
+    });
+    actions.append(upload,remove);
+    card.append(preview,actions,input);
+    byId('faceCards').append(card);
+    cardNodes.set(id,{card,preview,thumb,upload,remove});
+  }
+}
+async function uploadArtwork(key,file) {
+  if (file.size>20*1024*1024) {
+    hint('图片超过 20 MB，请压缩后重新上传。',true);
+    return;
+  }
+  if (file.type && !file.type.startsWith('image/')) {
+    hint('请选择 PNG、JPEG、WebP 或浏览器可读取的其他图片。',true);
+    return;
+  }
+  const token = {};
+  pendingUploads.set(key,token);
+  showArtworkControls();
+  const url=URL.createObjectURL(file);
+  try {
+    const source=new Image();
+    await new Promise((resolve,reject)=>{
+      source.onload=resolve;
+      source.onerror=reject;
+      source.src=url;
+    });
+    if (pendingUploads.get(key)!==token) return;
+    const {naturalWidth:w,naturalHeight:h}=source;
+    if (!w || !h || w*h>50_000_000 || Math.max(w,h)>16000) {
+      hint('图片尺寸过大，请缩小后再上传。',true);
+      return;
+    }
+    // 转成适合预览的本地位图，同时可在导出的 SVG 内完整嵌入。
+    const shrink=Math.min(1,2048/Math.max(w,h));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(w*shrink));
+    canvas.height=Math.max(1,Math.round(h*shrink));
+    canvas.getContext('2d').drawImage(source,0,0,canvas.width,canvas.height);
+    const mime=file.type==='image/jpeg'?'image/jpeg':'image/png';
+    const src=canvas.toDataURL(mime,.92);
+    if (src==='data:,') throw new Error('无法编码图片');
+    artwork[key]={...neutral,src,ratio:canvas.width/canvas.height};
+    refreshArtwork();
+    hint(shrink<1?'已应用贴图，长边压缩至 2048 像素。':'已应用贴图。');
+  } catch {
+    if (pendingUploads.get(key)===token) hint('无法读取这张图片，请尝试 PNG 或 JPEG。',true);
+  } finally {
+    URL.revokeObjectURL(url);
+    if (pendingUploads.get(key)===token) pendingUploads.delete(key);
+    showArtworkControls();
+  }
+}
+
+let design=null;
+let designRequest=0;
+function templateSignature() {
+  return [geometry.L,geometry.W,geometry.H].join('×');
+}
+function templatePage() {
+  const {width,height,margin}=geometry;
+  return {width:width+2*margin,height:height+2*margin,margin};
+}
+function updateDesignStatus() {
+  byId('removeDesign').disabled=!design;
+  byId('designStatus').textContent=design
+    ? design.signature===templateSignature()? '已导入 '+design.name+' · 单面贴图优先显示'
+      : '当前尺寸与成稿不符。恢复导入时的尺寸，或导入新成稿。'
+    : '设计完成后，隐藏刀版辅助层，按原画板完整导出 PNG。';
+}
+byId('importDesign').addEventListener('click',()=>byId('designFile').click());
+byId('designFile').addEventListener('change',async event=>{
+  const file=event.target.files[0];
+  event.target.value='';
+  if (!file) return;
+  const request=++designRequest;
+  const signature=templateSignature();
+  const page=templatePage();
+  let url;
+  try {
+    if (file.size>80*1024*1024) throw new Error('PNG 超过 80 MB，请降低导出分辨率后重试。');
+    const header=new Uint8Array(await file.slice(0,8).arrayBuffer());
+    if (header.join(',')!=='137,80,78,71,13,10,26,10') throw new Error('请导入按模板画板导出的 PNG。');
+    url=URL.createObjectURL(file);
+    const image=new Image();
+    image.src=url;
+    await image.decode();
+    if (request!==designRequest) return;
+    if (signature!==templateSignature() || byId('importDesign').disabled) {
+      throw new Error('导入期间尺寸有变化，请按当前模板重新导入。');
+    }
+    const {naturalWidth:width,naturalHeight:height}=image;
+    const ratio=page.width/page.height;
+    const tolerance=Math.max(.005,1/height+1/width);
+    if (!width || !height || Math.abs(width/height/ratio-1)>tolerance) {
+      throw new Error('成稿比例不匹配。请按原画板完整导出 PNG，别裁掉画板留白。');
+    }
+    if (design) URL.revokeObjectURL(design.url);
+    design={url,signature,name:file.name};
+    url=null;
+    updateDesignStatus();
+    refreshArtwork();
+    selectFace('');
+    resetView();
+    goToPreset(100);
+  } catch (error) {
+    if (request===designRequest) byId('designStatus').textContent=error.message||'无法读取 PNG。';
+  } finally {
+    if (url) URL.revokeObjectURL(url);
+  }
+});
+byId('removeDesign').addEventListener('click',()=>{
+  ++designRequest;
+  if (design) URL.revokeObjectURL(design.url);
+  design=null;
+  refreshArtwork();
+  updateDesignStatus();
+});
+
+const templateLayers=[['cut-lines','Cut lines'],['fold-lines','Fold lines'],['dimensions','Dimensions']];
+function exportSvgTemplate(page) {
+  const svg=byId('drawing').cloneNode(false);
+  for (const attr of ['id','role','aria-label']) svg.removeAttribute(attr);
+  svg.setAttribute('width',page.width+'mm');
+  svg.setAttribute('height',page.height+'mm');
+  const layersNS='http://www.inkscape.org/namespaces/inkscape';
+  for (const [id,name] of templateLayers) {
+    const group=byId(id).cloneNode(true);
+    group.setAttributeNS(layersNS,'inkscape:groupmode','layer');
+    group.setAttributeNS(layersNS,'inkscape:label',name);
+    group.prepend(svgTag('title'));
+    group.firstChild.textContent=name;
+    svg.append(group);
+  }
+  return new XMLSerializer().serializeToString(svg);
+}
+
+function exportPdfTemplate(page) {
+  const pt=72/25.4;
+  const fmt=value=>Number(value.toFixed(5));
+  const px=x=>fmt((x+page.margin)*pt);
+  const py=y=>fmt((page.height-page.margin-y)*pt);
+  const objects=[];
+  const put=value=>(objects.push(value),objects.length);
+  const catalog=put(''), pages=put(''), pageId=put('');
+  const font=put('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  const layerIds=templateLayers.map(([,name])=>put('<< /Type /OCG /Name ('+name+') >>'));
+  const commands=[];
+  for (const [index,[id]] of templateLayers.entries()) {
+    const layer=byId(id);
+    commands.push('q /OC /G'+index+' BDC');
+    for (const node of layer.children) {
+      const get=name=>node.getAttribute(name)??layer.getAttribute(name);
+      if (node.localName==='text') {
+        const text=node.textContent;
+        const size=Number(get('font-size'))*pt;
+        const centered=get('text-anchor')==='middle'?text.length*size*.25:0;
+        const x=px(Number(get('x'))), y=py(Number(get('y')));
+        const matrix=node.hasAttribute('transform')
+          ? '0 1 -1 0 '+fmt(x-size*.53)+' '+fmt(y-centered)
+          : '1 0 0 1 '+fmt(x-centered)+' '+y;
+        commands.push('0.07 0.37 0.30 rg BT /F1 '+fmt(size)+' Tf '+matrix+' Tm ('+text+') Tj ET');
+        continue;
+      }
+      const raw=node.localName==='path'?get('d').replace(/[ML]/g,' '):get('points');
+      const coords=raw.trim().split(/[ ,]+/).map(Number);
+      const color=get('stroke').slice(1).match(/../g).map(part=>fmt(parseInt(part,16)/255));
+      const dash=get('stroke-dasharray');
+      commands.push(color.join(' ')+' RG '+fmt(Number(get('stroke-width'))*pt)+' w');
+      commands.push(dash?'['+dash.split(' ').map(n=>fmt(Number(n)*pt)).join(' ')+'] 0 d':'[] 0 d');
+      for (let i=0;i<coords.length;i+=2) commands.push(px(coords[i])+' '+py(coords[i+1])+(i?' l':' m'));
+      commands.push('S');
+    }
+    commands.push('EMC Q');
+  }
+  const stream=commands.join('\n')+'\n';
+  const content=put('<< /Length '+stream.length+' >>\nstream\n'+stream+'endstream');
+  const refs=layerIds.map(id=>id+' 0 R').join(' ');
+  objects[catalog-1]='<< /Type /Catalog /Pages '+pages+' 0 R /OCProperties << /OCGs ['+refs+
+    '] /D << /Order ['+refs+'] /ON ['+refs+'] >> >> >>';
+  objects[pages-1]='<< /Type /Pages /Kids ['+pageId+' 0 R] /Count 1 >>';
+  objects[pageId-1]='<< /Type /Page /Parent '+pages+' 0 R /MediaBox [0 0 '+fmt(page.width*pt)+' '+
+    fmt(page.height*pt)+'] /Contents '+content+' 0 R /Resources << /Font << /F1 '+font+
+    ' 0 R >> /Properties << '+layerIds.map((id,index)=>'/G'+index+' '+id+' 0 R').join(' ')+' >> >> >>';
+  let pdf='%PDF-1.5\n';
+  const offsets=objects.map((value,index)=>{
+    const offset=pdf.length;
+    pdf+=(index+1)+' 0 obj\n'+value+'\nendobj\n';
+    return offset;
+  });
+  const xref=pdf.length;
+  return pdf+'xref\n0 '+(objects.length+1)+'\n0000000000 65535 f \n'+offsets.map(offset=>
+    String(offset).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+(objects.length+1)+
+    ' /Root '+catalog+' 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
+}
+byId('export').addEventListener('click',()=>{
+  const format=byId('templateFormat').value;
+  const page=templatePage();
+  const content=format==='svg'?exportSvgTemplate(page):exportPdfTemplate(page);
+  const type=format==='svg'?'image/svg+xml':'application/pdf';
+  const url=URL.createObjectURL(new Blob([content],{type}));
+  const link=document.createElement('a');
+  link.href=url;
+  link.download='box_template_'+dims.L+'x'+dims.W+'x'+dims.H+'.'+format;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+});
+
+createArtworkCards();
+updateDimensions();
+for (const panel of geometry.panels) {
+  const option=document.createElement('option');
+  option.value=panel.id;
+  option.textContent=presentName(panel);
+  byId('partPicker').append(option);
+}
+showArtworkControls();
+
+</script>
+</body>
+</html>
