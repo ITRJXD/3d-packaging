@@ -128,7 +128,9 @@ input[type=range]{width:100%;min-width:0;accent-color:var(--accent);margin:0}
 .saved-view-card.dragging{opacity:.45}.saved-view-card .controls{gap:6px}
 .saved-view-card img,#presentationPreview img,#imageViewerStage{background-color:#fff;background-image:conic-gradient(#e7e7e7 25%,transparent 0 50%,#e7e7e7 0 75%,transparent 0);background-size:18px 18px}
 #presentationPreview img{cursor:zoom-in}#imageViewerStage{overflow:auto;max-height:78vh;padding:12px}
-#imageViewerImage{display:block;max-width:none;margin:auto}
+#imageViewerImage{position:absolute;display:block;max-width:none;margin:0;transform-origin:0 0;user-select:none;pointer-events:none}
+.image-viewer-body{position:relative}#imageViewerStage{position:relative;height:70vh;max-height:70vh;overflow:hidden;padding:0;touch-action:none;cursor:grab}#imageViewerStage.dragging{cursor:grabbing}
+.image-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:1;font-size:32px;background:#ffffffed;box-shadow:0 2px 10px #0002}.image-nav.previous{left:12px}.image-nav.next{right:12px}
 #savedViewSource{display:flex;align-items:center;gap:6px;margin:8px 0}
 #savedViewNotice.message-toast{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:10000;display:flex;align-items:center;gap:9px;width:max-content;max-width:calc(100vw - 32px);padding:12px 18px;border:1px solid #b8dec8;border-radius:8px;background:#eff9f2;color:#247447;box-shadow:0 5px 20px #173b2920;font-size:14px;line-height:1.5;pointer-events:none;animation:message-appear .18s ease-out}
 #savedViewNotice[hidden]{display:none}
@@ -244,9 +246,9 @@ input[type=range]{width:100%;min-width:0;accent-color:var(--accent);margin:0}
 <dialog id="imageViewer" aria-labelledby="imageViewerTitle">
   <div class="bar"><h2 id="imageViewerTitle">查看图片</h2><div class="controls">
     <button id="imageZoomOut" aria-label="缩小图片">−</button><output id="imageZoomValue">100%</output>
-    <button id="imageZoomIn" aria-label="放大图片">＋</button><form method="dialog"><button>关闭</button></form>
+    <button id="imageZoomIn" aria-label="放大图片">＋</button><button id="imageFit">适应窗口</button><form method="dialog"><button>关闭</button></form>
   </div></div>
-  <div id="imageViewerStage"><img id="imageViewerImage" alt=""></div>
+  <div class="image-viewer-body"><div id="imageViewerStage"><img id="imageViewerImage" alt="" draggable="false"></div><button id="imagePrevious" class="image-nav previous" aria-label="上一张">‹</button><button id="imageNext" class="image-nav next" aria-label="下一张">›</button></div>
 </dialog>
 <div id="pageGuide" hidden>
   <div id="guideSpot" aria-hidden="true"></div>
@@ -2418,35 +2420,89 @@ function persistSavedViews() {
     showSavedViewNotice('视图已保留在本次页面，浏览器保存失败，请及时导出。');
   });
 }
-function attachImageViewer(image,blob,title) {
+// 查看器按保存列表顺序切换；图片请求序号避免快速切图时旧结果覆盖新图。
+let viewerItems=[],viewerIndex=0,viewerRequest=0,viewerBase=1,viewerX=0,viewerY=0,viewerDrag=null;
+function attachImageViewer(image,blob,title,savedId=null) {
   image.tabIndex=0;image.setAttribute('role','button');
   image.setAttribute('aria-label','放大查看 '+title);
   const open=()=>{
-    if (viewerUrl) URL.revokeObjectURL(viewerUrl);
-    viewerUrl=URL.createObjectURL(blob);
-    const target=byId('imageViewerImage');
-    target.onload=()=>setImageViewerScale(1);
-    target.src=viewerUrl;target.alt=title;
-    byId('imageViewerTitle').textContent=title;
+    viewerItems=savedId?savedViews.map(item=>({blob:item.thumbnail,title:item.name,id:item.id})):[{blob,title}];
+    viewerIndex=savedId?Math.max(0,viewerItems.findIndex(item=>item.id===savedId)):0;
     if (!byId('imageViewer').open) byId('imageViewer').showModal();
+    showViewerImage();
   };
   image.addEventListener('click',open);
   image.addEventListener('keydown',event=>{
-    if (event.key==='Enter'||event.key===' ') {event.preventDefault();open();}
+    if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}
   });
 }
-function setImageViewerScale(scale) {
-  viewerScale=clamp(scale,.25,5);
-  const image=byId('imageViewerImage');
-  const width=Math.min(image.naturalWidth,byId('imageViewerStage').clientWidth-24);
-  image.style.width=width*viewerScale+'px';
+function showViewerImage() {
+  const item=viewerItems[viewerIndex];if(!item)return;
+  const request=++viewerRequest;
+  if(viewerUrl)URL.revokeObjectURL(viewerUrl);
+  viewerUrl=URL.createObjectURL(item.blob);
+  const target=byId('imageViewerImage');target.style.visibility='hidden';
+  target.onload=()=>{if(request!==viewerRequest)return;target.style.visibility='';fitViewerImage();};
+  target.onerror=()=>{if(request===viewerRequest)byId('imageViewerTitle').textContent='图片加载失败，请切换重试';};
+  target.src=viewerUrl;target.alt=item.title;
+  byId('imageViewerTitle').textContent=item.title+' · '+(viewerIndex+1)+' / '+viewerItems.length;
+  for(const id of ['imagePrevious','imageNext'])byId(id).hidden=viewerItems.length<2;
+}
+function paintViewerImage(){
+  byId('imageViewerImage').style.transform=`translate(${viewerX}px,${viewerY}px) scale(${viewerBase*viewerScale})`;
   byId('imageZoomValue').textContent=Math.round(viewerScale*100)+'%';
 }
+function fitViewerImage(){
+  const image=byId('imageViewerImage'),stage=byId('imageViewerStage');
+  if(!image.naturalWidth||!stage.clientWidth)return;
+  viewerBase=Math.min((stage.clientWidth-32)/image.naturalWidth,(stage.clientHeight-32)/image.naturalHeight,1);
+  image.style.width=image.naturalWidth+'px';image.style.height=image.naturalHeight+'px';
+  viewerScale=1;viewerX=(stage.clientWidth-image.naturalWidth*viewerBase)/2;
+  viewerY=(stage.clientHeight-image.naturalHeight*viewerBase)/2;paintViewerImage();
+}
+function setImageViewerScale(scale,x,y){
+  const stage=byId('imageViewerStage');
+  x=x??stage.clientWidth/2;y=y??stage.clientHeight/2;
+  const next=clamp(scale,.25,5),ratio=next/viewerScale;
+  viewerX=x-(x-viewerX)*ratio;viewerY=y-(y-viewerY)*ratio;viewerScale=next;paintViewerImage();
+}
+function stepViewer(direction){
+  if(viewerItems.length<2)return;
+  viewerDrag=null;byId('imageViewerStage').classList.remove('dragging');
+  viewerIndex=(viewerIndex+direction+viewerItems.length)%viewerItems.length;showViewerImage();
+}
+byId('imagePrevious').addEventListener('click',()=>stepViewer(-1));
+byId('imageNext').addEventListener('click',()=>stepViewer(1));
+byId('imageFit').addEventListener('click',fitViewerImage);
 byId('imageZoomIn').addEventListener('click',()=>setImageViewerScale(viewerScale*1.25));
 byId('imageZoomOut').addEventListener('click',()=>setImageViewerScale(viewerScale/1.25));
+byId('imageViewer').addEventListener('keydown',event=>{
+  if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();stepViewer(event.key==='ArrowLeft'?-1:1);}
+});
+const viewerStage=byId('imageViewerStage');
+viewerStage.addEventListener('wheel',event=>{
+  event.preventDefault();const rect=viewerStage.getBoundingClientRect();
+  setImageViewerScale(viewerScale*Math.exp(-event.deltaY*.002),event.clientX-rect.left,event.clientY-rect.top);
+},{passive:false});
+viewerStage.addEventListener('dblclick',event=>{
+  if(viewerScale>1.01)fitViewerImage();
+  else{const rect=viewerStage.getBoundingClientRect();setImageViewerScale(2,event.clientX-rect.left,event.clientY-rect.top);}
+});
+viewerStage.addEventListener('pointerdown',event=>{
+  if(event.button!==0)return;
+  viewerDrag={id:event.pointerId,x:event.clientX,y:event.clientY,left:viewerX,top:viewerY};
+  viewerStage.setPointerCapture(event.pointerId);viewerStage.classList.add('dragging');
+});
+viewerStage.addEventListener('pointermove',event=>{
+  if(!viewerDrag||viewerDrag.id!==event.pointerId)return;
+  viewerX=viewerDrag.left+event.clientX-viewerDrag.x;viewerY=viewerDrag.top+event.clientY-viewerDrag.y;paintViewerImage();
+});
+for(const name of ['pointerup','pointercancel','lostpointercapture'])viewerStage.addEventListener(name,()=>{viewerDrag=null;viewerStage.classList.remove('dragging');});
+window.addEventListener('resize',()=>{if(byId('imageViewer').open)fitViewerImage();});
 byId('imageViewer').addEventListener('close',()=>{
-  if(viewerUrl) URL.revokeObjectURL(viewerUrl);
-  viewerUrl='';byId('imageViewerImage').removeAttribute('src');
+  ++viewerRequest;if(viewerUrl)URL.revokeObjectURL(viewerUrl);
+  viewerUrl='';viewerItems=[];viewerDrag=null;viewerStage.classList.remove('dragging');
+  byId('imageViewerImage').removeAttribute('src');
 });
 async function renderSavedView(item,dimensions) {
   const image=new Image();
@@ -2492,7 +2548,7 @@ function renderSavedViews() {
     const image=document.createElement('img');
     const url=URL.createObjectURL(item.thumbnail);savedViewUrls.push(url);
     image.src=url;image.alt=item.name;image.draggable=false;
-    attachImageViewer(image,item.thumbnail,item.name);
+    attachImageViewer(image,item.thumbnail,item.name,item.id);
     const date=document.createElement('span');date.className='muted';
     date.textContent=item.dimensions+' · '+new Date(item.created).toLocaleString();
     const actions=document.createElement('div');actions.className='controls';
