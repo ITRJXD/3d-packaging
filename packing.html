@@ -6,6 +6,8 @@
 <title>子母箱装箱｜3D 包材设计工具</title>
 <meta name="description" content="计算子箱装箱数量与母箱内外尺寸，校验三边和，逐层调整并查看 3D 摆放。">
 <meta name="author" content="Perry">
+<meta name="application-version" content="1.1.0">
+<!-- 与主页面统一版本；变更与验证记录见 CHANGELOG.md。 -->
 <style>
 :root{color-scheme:light;--ink:#172c29;--muted:#506963;--border:#d9e5df;--paper:#fff;--accent:#115e4d;--mint:#e7f5ee;--cut:#263c36;--fold:#3166a5}
 *{box-sizing:border-box}
@@ -145,6 +147,8 @@ label{display:grid;gap:4px;font-weight:600;min-width:0}
   </div>
 </main>
 <script>
+// 子母箱模块：参数校验、摆放方案枚举、限制筛选、尺寸计算与视图更新。
+// 本页计算逻辑独立于主页面成稿导入；版本号与主页面同步维护。
 const byId=id=>document.getElementById(id);
 const svgNS="http://www.w3.org/2000/svg";
 const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
