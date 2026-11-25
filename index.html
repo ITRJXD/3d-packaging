@@ -139,6 +139,8 @@ input[type=range]{width:100%;min-width:0;accent-color:var(--accent);margin:0}
 #savedViewNotice[data-kind="warning"] #savedViewNoticeIcon{background:#a77a26}
 @keyframes message-appear{from{opacity:0;translate:0 -8px}to{opacity:1;translate:0 0}}
 @media(prefers-reduced-motion:reduce){#savedViewNotice.message-toast{animation:none}}
+
+.github-link{order:99;flex:none;justify-content:center;width:38px;height:38px;padding:7px!important}.github-link svg{display:block;flex:none}
 </style>
 </head>
 <body>
@@ -159,6 +161,7 @@ input[type=range]{width:100%;min-width:0;accent-color:var(--accent);margin:0}
     <button id="openPresentation" aria-haspopup="dialog">导出展示图</button>
     <button class="primary" id="importDesign">导入成稿</button>
     <button id="removeDesign" hidden>移除成稿</button>
+    <a class="page-link github-link" href="https://github.com/perry46638/3d-packaging" target="_blank" rel="noopener noreferrer" aria-label="GitHub 项目仓库（新窗口打开）" title="GitHub 项目仓库（私有仓库需授权）"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 .75a11.25 11.25 0 0 0-3.558 21.923c.563.104.768-.244.768-.542 0-.267-.01-.975-.015-1.913-3.13.68-3.79-1.51-3.79-1.51-.512-1.3-1.25-1.646-1.25-1.646-1.022-.699.077-.685.077-.685 1.13.08 1.725 1.16 1.725 1.16 1.005 1.723 2.637 1.225 3.28.937.102-.729.393-1.225.715-1.507-2.498-.284-5.124-1.249-5.124-5.563 0-1.23.44-2.233 1.16-3.02-.117-.284-.503-1.429.11-2.979 0 0 .945-.302 3.094 1.153a10.78 10.78 0 0 1 5.633 0c2.148-1.455 3.092-1.153 3.092-1.153.615 1.55.23 2.695.113 2.98.722.786 1.158 1.788 1.158 3.019 0 4.325-2.63 5.276-5.136 5.555.404.35.765 1.043.765 2.1 0 1.516-.014 2.74-.014 3.112 0 .3.203.65.774.54A11.252 11.252 0 0 0 12 .75Z"/></svg></a>
     <input id="designFile" type="file" accept=".ai,.pdf,.png,.jpg,.jpeg,.webp,.svg,.gif,.bmp,.avif,image/*,application/pdf,application/postscript" hidden>
   </div>
   <p id="designStatus" role="status" hidden></p>
@@ -478,6 +481,11 @@ function drawDimensions(svg,font) {
   const {L,W,H,height,margin} = geometry;
   const layer = svgTag('g',{id:'dimensions','font-family':'sans-serif','font-size':font*.86},svg);
   const ink = '#115e4d';
+  // 标题放在刀版上方留白，归入尺寸图层，使各导出入口与尺寸开关保持一致。
+  const titleSize=Math.min(margin*.38,geometry.width/42);
+  const heading=svgTag('text',{x:0,y:-margin*.46,fill:ink,'font-size':titleSize,
+    'font-family':'sans-serif','font-weight':'600','text-anchor':'start','data-dimension-title':'true'},layer);
+  heading.textContent='L '+displayLength(L)+' x W '+displayLength(W)+' x H '+displayLength(H)+' '+dimensionUnit;
   // 尺寸线以真实刀版坐标绘制，屏幕和 SVG 导出使用同一组线段。
   function measure(a,b,offset,label) {
     const vertical = a[0]===b[0];
