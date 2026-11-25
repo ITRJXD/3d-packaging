@@ -6,7 +6,7 @@
 <title>子母箱装箱｜3D 包材设计工具</title>
 <meta name="description" content="计算子箱装箱数量与母箱内外尺寸，校验三边和，逐层调整并查看 3D 摆放。">
 <meta name="author" content="Perry">
-<meta name="application-version" content="1.1.0">
+<meta name="application-version" content="1.1.1">
 <!-- 与主页面统一版本；变更与验证记录见 CHANGELOG.md。 -->
 <style>
 :root{color-scheme:light;--ink:#172c29;--muted:#506963;--border:#d9e5df;--paper:#fff;--accent:#115e4d;--mint:#e7f5ee;--cut:#263c36;--fold:#3166a5}
@@ -740,6 +740,15 @@ for (const button of viewButtons) button.addEventListener('click',()=>{
   for (const choice of viewButtons) choice.setAttribute('aria-pressed',String(choice===button));
   renderPackingResult();
 });
+// 高频输入只更新角度和缩放；下一动画帧集中绘制，使用最新参数。
+let packingSceneFrame=0;
+function schedulePackingScene(){
+  if(packingSceneFrame)return;
+  packingSceneFrame=requestAnimationFrame(()=>{
+    packingSceneFrame=0;
+    if(packingConfig&&packingLayers.length)drawPackingScene(packingMeasurements(packingConfig,packingLayers));
+  });
+}
 let packingDrag=null;
 packingScene.addEventListener('pointerdown',event=>{
   if (packingProjection!=='perspective'||!packingLayers.length||event.button!==0) return;
@@ -751,14 +760,14 @@ packingScene.addEventListener('pointermove',event=>{
   packingView.y=(packingView.y+(event.clientX-packingDrag.x)*.45)%360;
   packingView.x=clamp(packingView.x-(event.clientY-packingDrag.y)*.45,-85,85);
   Object.assign(packingDrag,{x:event.clientX,y:event.clientY});
-  drawPackingScene(packingMeasurements(packingConfig,packingLayers));
+  schedulePackingScene();
 });
 packingScene.addEventListener('lostpointercapture',()=>{packingDrag=null;});
 packingScene.addEventListener('wheel',event=>{
   if (packingProjection!=='perspective'||!packingLayers.length) return;
   event.preventDefault();
   packingView.zoom=clamp(packingView.zoom*Math.exp(-event.deltaY*.0015),.45,3);
-  drawPackingScene(packingMeasurements(packingConfig,packingLayers));
+  schedulePackingScene();
 },{passive:false});
 
 calculatePacking();

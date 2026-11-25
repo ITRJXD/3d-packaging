@@ -7,7 +7,7 @@
 <meta name="keywords" content="3D包装盒设计, 包装盒刀版, 纸箱展开图, 3D折叠预览, 包材设计, 刀版模板导出">
 <meta name="description" content="输入长宽高生成包装盒刀版，支持导入成稿、3D 折叠预览和多种尺寸单位。可单独导出刀版或 3D 效果图，也可合并导出 PDF。">
 <meta name="author" content="Perry">
-<meta name="application-version" content="1.1.0">
+<meta name="application-version" content="1.1.1">
 <!-- 版本与修改记录：见 VERSION 和 CHANGELOG.md。第三方内嵌资源保持原样。 -->
 <style>
 :root{color-scheme:light;--ink:#172c29;--muted:#506963;--border:#d9e5df;--paper:#fff;--accent:#115e4d;--mint:#e7f5ee;--cut:#e32636;--fold:#e32636}
@@ -2300,6 +2300,8 @@ function setupLiveRenderer() {
   gl.clearColor(0,0,0,0);
   const buffer=gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+  // 六个顶点，每顶点包含裁剪坐标和 UV；只分配一次 GPU 缓冲区。
+  gl.bufferData(gl.ARRAY_BUFFER,36*Float32Array.BYTES_PER_ELEMENT,gl.DYNAMIC_DRAW);
   for (const [name,length,offset] of [['position',4,0],['uv',2,16]]) {
     const location=gl.getAttribLocation(program,name);
     gl.enableVertexAttribArray(location);
@@ -2313,6 +2315,7 @@ function setupLiveRenderer() {
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
   gl.uniform1i(uniforms.artworkImage,0);
   liveRenderer={canvas,gl,uniforms,empty,textures:new Map(),cache:new Map(),revision:-1,
+    vertices:new Float32Array(36),colors:new Map(),textureInputs:null,
     maxTexture:gl.getParameter(gl.MAX_TEXTURE_SIZE)};
   stage.classList.add('shared-3d');
   scheduleLiveFrame();
@@ -2372,6 +2375,12 @@ function loadLiveTextures() {
   const renderer=liveRenderer;
   if (!renderer || !view.frame) return [];
   const {gl,textures}=renderer;
+  const density=Math.max(2,Math.min(12,Math.ceil(view.frame.fit*view.zoom*(globalThis.devicePixelRatio||1))));
+  const inputs=renderer.textureInputs;
+  // 旋转不改变贴图；只在素材、模型节点或清晰度档位变化时检查 DOM。
+  if(inputs&&inputs.hinges===hinges&&inputs.revision===artworkRevision&&inputs.density===density)
+    return Array.from(textures.values(),item=>item.job);
+  renderer.textureInputs={hinges,revision:artworkRevision,density};
   if (renderer.revision!==artworkRevision) {
     renderer.revision=artworkRevision;
     renderer.cache=new Map();
@@ -2383,7 +2392,6 @@ function loadLiveTextures() {
     const source=Array.from(hinge.children).find(node=>node.localName==='svg'&&node.querySelector('[data-overlay]'));
     if (!source?.querySelector('image[href]')) continue;
     const [, ,w,h]=source.getAttribute('viewBox').split(/\s+/).map(Number);
-    const density=Math.max(2,Math.min(12,Math.ceil(view.frame.fit*view.zoom*(globalThis.devicePixelRatio||1))));
     const limit=Math.min(renderer.maxTexture,3072);
     const resolution=Math.min(density,limit/Math.max(w,h));
     const previous=textures.get(id);
@@ -2443,11 +2451,14 @@ function drawLiveMeshes(showSelection=true) {
   for (const mesh of lastLiveMeshes) {
     const texture=textures.get(mesh.texture)?.texture;
     gl.bindTexture(gl.TEXTURE_2D,texture||empty);
-    const rgb=mesh.color.slice(1).match(/../g).map(value=>parseInt(value,16)/255);
+    let rgb=liveRenderer.colors.get(mesh.color);
+    if(!rgb){rgb=mesh.color.slice(1).match(/../g).map(value=>parseInt(value,16)/255);liveRenderer.colors.set(mesh.color,rgb);}
     gl.uniform3f(uniforms.paper,...rgb);
     gl.uniform1f(uniforms.artworkVisible,texture?1:0);
     gl.uniform1f(uniforms.highlight,showSelection&&mesh.highlight?1:0);
-    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(meshTriangles.flatMap(index=>mesh.vertices[index])),gl.DYNAMIC_DRAW);
+    const vertices=liveRenderer.vertices;
+    for(let i=0;i<meshTriangles.length;i++)vertices.set(mesh.vertices[meshTriangles[i]],i*6);
+    gl.bufferSubData(gl.ARRAY_BUFFER,0,vertices);
     gl.drawArrays(gl.TRIANGLES,0,6);
   }
 }
@@ -2788,6 +2799,7 @@ async function createPresentationPdf(flat,raster,vectorPage,templateSize) {
 let savedViews=[],savedViewsReady=false,savedViewsQueue=Promise.resolve(),savedViewsRevision=0;
 let savedViewUrls=[],draggedViewId='',viewerUrl='',viewerScale=1;
 let savedViewNoticeTimer;
+let savedViewsWriteToken=0;
 function showSavedViewNotice(message,autoHide=false) {
   clearTimeout(savedViewNoticeTimer);
   const notice=byId('savedViewNotice');
@@ -2822,6 +2834,7 @@ async function loadSavedViews() {
   renderSavedViews();
 }
 function clearSavedViewsWithDesign() {
+  ++savedViewsWriteToken; // 取消尚未开始的旧写入，清理事务仍排在正在执行的写入之后。
   ++savedViewsRevision;
   savedViews=[];
   savedViewsReady=true;
@@ -2852,8 +2865,13 @@ function clearSavedViewsWithDesign() {
   });
 }
 function persistSavedViews() {
-  const entries=savedViews.map(item=>({...item}));
-  savedViewsQueue=savedViewsQueue.catch(()=>{}).then(()=>viewHistoryStorage('write',entries));
+  const token=++savedViewsWriteToken;
+  const revision=savedViewsRevision;
+  // 同步连续操作和正在写入时积累的操作，只提交最后一个状态，不累积大图副本。
+  savedViewsQueue=savedViewsQueue.catch(()=>{}).then(()=>{
+    if(token!==savedViewsWriteToken||revision!==savedViewsRevision)return;
+    return viewHistoryStorage('write',savedViews.map(item=>({...item})));
+  });
   savedViewsQueue.catch(()=>{
     historyStatus('保存到浏览器失败。本次视图仍可查看和导出，请及时下载。');
     showSavedViewNotice('视图已保留在本次页面，浏览器保存失败，请及时导出。');
@@ -2865,7 +2883,8 @@ function attachImageViewer(image,blob,title,savedId=null) {
   image.tabIndex=0;image.setAttribute('role','button');
   image.setAttribute('aria-label','放大查看 '+title);
   const open=()=>{
-    viewerItems=savedId?savedViews.map(item=>({blob:item.vector?new Blob([new XMLSerializer().serializeToString(fitVectorScene(new DOMParser().parseFromString(item.vector,'image/svg+xml').documentElement,new DOMParser().parseFromString(item.guides,'image/svg+xml').documentElement))],{type:'image/svg+xml'}):item.thumbnail,title:item.name,id:item.id})):[{blob,title}];
+    viewerBlobCache.clear();
+    viewerItems=savedId?savedViews.map(item=>({saved:item,title:item.name,id:item.id})):[{blob,title}];
     viewerIndex=savedId?Math.max(0,viewerItems.findIndex(item=>item.id===savedId)):0;
     if (!byId('imageViewer').open) byId('imageViewer').showModal();
     showViewerImage();
@@ -2875,11 +2894,28 @@ function attachImageViewer(image,blob,title,savedId=null) {
     if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}
   });
 }
+// 只生成当前查看的矢量图，并最多缓存三张；打开第一张不再处理整份历史。
+const viewerBlobCache=new Map();
+function viewerItemBlob(item) {
+  if(item.blob)return item.blob;
+  if(viewerBlobCache.has(item.id)){
+    const blob=viewerBlobCache.get(item.id);viewerBlobCache.delete(item.id);viewerBlobCache.set(item.id,blob);return blob;
+  }
+  const saved=item.saved;
+  const blob=saved.vector?new Blob([new XMLSerializer().serializeToString(fitVectorScene(
+    new DOMParser().parseFromString(saved.vector,'image/svg+xml').documentElement,
+    new DOMParser().parseFromString(saved.guides,'image/svg+xml').documentElement))],{type:'image/svg+xml'}):saved.thumbnail;
+  viewerBlobCache.set(item.id,blob);
+  if(viewerBlobCache.size>3)viewerBlobCache.delete(viewerBlobCache.keys().next().value);
+  return blob;
+}
 function showViewerImage() {
   const item=viewerItems[viewerIndex];if(!item)return;
   const request=++viewerRequest;
   if(viewerUrl)URL.revokeObjectURL(viewerUrl);
-  viewerUrl=URL.createObjectURL(item.blob);
+  let blob;
+  try{blob=viewerItemBlob(item);}catch(error){byId('imageViewerTitle').textContent='图片处理失败：'+error.message;return;}
+  viewerUrl=URL.createObjectURL(blob);
   const target=byId('imageViewerImage');target.style.visibility='hidden';
   target.onload=()=>{if(request!==viewerRequest)return;target.style.visibility='';fitViewerImage();};
   target.onerror=()=>{if(request===viewerRequest)byId('imageViewerTitle').textContent='图片加载失败，请切换重试';};
@@ -2940,6 +2976,7 @@ for(const name of ['pointerup','pointercancel','lostpointercapture'])viewerStage
 window.addEventListener('resize',()=>{if(byId('imageViewer').open)fitViewerImage();});
 byId('imageViewer').addEventListener('close',()=>{
   ++viewerRequest;if(viewerUrl)URL.revokeObjectURL(viewerUrl);
+  viewerBlobCache.clear();
   viewerUrl='';viewerItems=[];viewerDrag=null;viewerStage.classList.remove('dragging');
   byId('imageViewerImage').removeAttribute('src');
 });
